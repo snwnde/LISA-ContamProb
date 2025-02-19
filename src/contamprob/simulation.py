@@ -2,28 +2,49 @@
 
 import bisect
 import pathlib
-from typing import NamedTuple, Self, Literal
+from collections.abc import Sequence
+from typing import NamedTuple, Self, Literal, Protocol, cast
 import numpy as np
 import numpy.typing as npt
 from .problem_setup import ContaminationProcess, PoissonProcess
 
 
+# Protocols
+class _Interval(Protocol):
+    start: float
+    stop: float
+
+
+class _DisjointUnion(Protocol):
+    intervals: Sequence[_Interval]
+
+
+# Julia Intervals
+class JuliaInterval(_Interval):
+    ...
+
+
+class JuliaDisjointUnion(_DisjointUnion):
+    intervals: Sequence[JuliaInterval]
+
+
+# Interval Class
 class Interval(NamedTuple):
     """An interval."""
 
     start: float
     """The start of the interval."""
 
-    end: float
-    """The end of the interval."""
+    stop: float
+    """The stop of the interval."""
 
     @classmethod
-    def build(cls, start: float, end: float) -> Self:
-        """Create an interval from a start and an end."""
-        assert start <= end, (
-            "The start of the interval must be less than or equal to the end."
+    def build(cls, start: float, stop: float) -> Self:
+        """Create an interval from a start and a stop."""
+        assert start <= stop, (
+            "The start of the interval must be less than or equal to the stop."
         )
-        return cls(start, end)
+        return cls(start, stop)
 
     @classmethod
     def from_start(cls, start: float, duration: float) -> Self:
@@ -31,41 +52,47 @@ class Interval(NamedTuple):
         return cls.build(start, start + duration)
 
     @classmethod
-    def from_end(cls, end: float, duration: float) -> Self:
-        """Create an interval from an end and a duration."""
-        return cls.build(end - duration, end)
+    def from_end(cls, stop: float, duration: float) -> Self:
+        """Create an interval from a stop and a duration."""
+        return cls.build(stop - duration, stop)
+
+    @classmethod
+    def from_julia(cls, interval: JuliaInterval) -> Self:
+        """Create an interval from a Julia object."""
+        return cls(interval.start, interval.stop)
 
     @property
     def length(self) -> float:
         """Return the length of the interval."""
-        return self.end - self.start
+        return self.stop - self.start
 
     def capped(self, cap: float) -> Self:
         """Cap the interval."""
-        return type(self)(self.start, min(self.end, cap))
+        return type(self)(self.start, min(self.stop, cap))
 
     def floored(self, floor: float) -> Self:
         """Floor the interval."""
-        return type(self)(max(self.start, floor), self.end)
+        return type(self)(max(self.start, floor), self.stop)
 
     def contains(self, element: float) -> bool:
         """Check if an element is contained in the interval."""
-        return self.start <= element <= self.end
+        return self.start <= element <= self.stop
 
     def is_disjoint_with(self, other: Self) -> bool:
         """Check if two intervals are disjoint."""
-        return self.end < other.start or other.end < self.start
+        return self.stop < other.start or other.stop < self.start
 
     def merge_with(self, other: Self, reset_mode: bool = False) -> Self:
         """Compute the union of two non-disjoint intervals."""
         assert not self.is_disjoint_with(other), "The intervals must not be disjoint."
         if not reset_mode:
-            return type(self)(min(self.start, other.start), max(self.end, other.end))
+            return type(self)(min(self.start, other.start), max(self.stop, other.stop))
         if self.start <= other.start:
-            return type(self)(self.start, other.end)
-        return type(self)(other.start, self.end)
+            return type(self)(self.start, other.stop)
+        return type(self)(other.start, self.stop)
 
 
+# Union Classes
 class Union:
     """A union of intervals."""
 
@@ -89,23 +116,17 @@ class DisjointUnion(Union):
     """A union of disjoint intervals."""
 
     def add_interval(self, other: Interval, reset_mode: bool = False):
-        """Add an interval to the union. If it overlaps with existing intervals, merge_with them.
+        """Add an interval to the union. If it overlaps with existing intervals, merge them.
 
         Caution: This method assumes that the intervals are sorted by start time.
         """
-        # Copy the intervals
         intervals = self.intervals.copy()
-        # Find the position to insert the new interval
         idx = bisect.bisect_left(intervals, other)
-        # If the new interval overlaps with the previous interval, merge_with them
         if idx > 0 and not intervals[idx - 1].is_disjoint_with(other):
             idx -= 1
-            # We do not need to merge_with immediately since we will merge_with later
 
-        # If the new interval overlaps with the next interval, merge_with them
         while idx < len(intervals) and not intervals[idx].is_disjoint_with(other):
             other = other.merge_with(intervals.pop(idx), reset_mode=reset_mode)
-        # Insert the new (possibly merged) interval
         intervals.insert(idx, other)
         self.intervals = intervals
 
@@ -130,6 +151,30 @@ class DisjointUnion(Union):
             for i in range(len(self.intervals) - 1)
         )
 
+    @classmethod
+    def from_julia(cls, disj_union: JuliaDisjointUnion) -> Self:
+        """Create a disjoint union from a Julia object."""
+        return cls([Interval.from_julia(interval) for interval in disj_union.intervals])
+
+
+# Simulation Result Classes
+class _SimulationResult(Protocol):
+    event_arrivals: None | npt.NDArray[np.float_]
+    ctmn_arrivals: npt.NDArray[np.float_]
+    ctmn_periods: npt.NDArray[np.float_]
+    ctmn_intervals: None | _DisjointUnion
+    ctmn_length: float
+    contaminated_events: None | npt.NDArray[np.float_]
+
+
+class JuliaSimulationResult(_SimulationResult):
+    event_arrivals: None | npt.NDArray[np.float_]
+    ctmn_arrivals: npt.NDArray[np.float_]
+    ctmn_periods: npt.NDArray[np.float_]
+    ctmn_intervals: None | JuliaDisjointUnion
+    ctmn_length: float
+    contaminated_events: None | npt.NDArray[np.float_]
+
 
 class SimulationResult(NamedTuple):
     """The result of a simulation."""
@@ -147,7 +192,22 @@ class SimulationResult(NamedTuple):
     contaminated_events: None | npt.NDArray[np.float_]
     """The events that are contaminated."""
 
+    @classmethod
+    def from_julia(cls, result: JuliaSimulationResult) -> Self:
+        """Create a simulation result from a Julia object."""
+        return cls(
+            result.event_arrivals,
+            result.ctmn_arrivals,
+            result.ctmn_periods,
+            None
+            if result.ctmn_intervals is None
+            else DisjointUnion.from_julia(result.ctmn_intervals),
+            result.ctmn_length,
+            result.contaminated_events,
+        )
 
+
+# Simulator Classes
 class _Simulator:
     def __init__(
         self,
@@ -221,22 +281,14 @@ class Simulator(_Simulator):
             observation_time, seed
         )
 
-        _result = self.jl.SimuCore.result_gen(
+        result = self.jl.SimuCore.result_gen(
             event_arrivals,
             ctmn_arrivals,
             ctmn_periods,
             float(observation_time),
             self.scenario,
         )
-        result = SimulationResult(
-            event_arrivals,
-            ctmn_arrivals,
-            ctmn_periods,
-            _result.ctmn_intervals,
-            _result.ctmn_length,
-            _result.contaminated_events,
-        )
-        return result
+        return cast(JuliaSimulationResult, result)
 
     def __call__(
         self, observation_time: float, seed: None | int | np.random.Generator = None
