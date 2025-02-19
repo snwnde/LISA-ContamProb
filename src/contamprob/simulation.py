@@ -1,6 +1,7 @@
 """Simulation of contamination probabilities."""
 
 import bisect
+import pathlib
 from typing import NamedTuple, Self, Literal
 import numpy as np
 import numpy.typing as npt
@@ -154,11 +155,21 @@ class _Simulator:
         event_proc: PoissonProcess,
         scenario: Literal["constant_period", "merged_interval", "reset_interval"],
         collect_events: bool = False,
+        use_julia: bool = True,
     ) -> None:
         self.ctnm_proc = ctnm_proc
         self.event_proc = event_proc
         self.scenario = scenario
         self.collect_events = collect_events
+        self.use_julia = use_julia
+
+        if use_julia:
+            import juliacall  # type: ignore[import]
+
+            jl = juliacall.newmodule(__name__)
+            simu_core_jl = pathlib.Path(__file__).with_name("SimuCore.jl")
+            jl.seval(f'include("{simu_core_jl}")')
+            self.jl = jl
 
     def _generate_data(
         self, observation_time: float, seed: None | int | np.random.Generator = None
@@ -203,11 +214,39 @@ class Simulator(_Simulator):
         )
         return result
 
+    def __call_julia__(
+        self, observation_time: float, seed: None | int | np.random.Generator = None
+    ):
+        event_arrivals, ctmn_arrivals, ctmn_periods = self._generate_data(
+            observation_time, seed
+        )
+
+        _result = self.jl.SimuCore.result_gen(
+            event_arrivals,
+            ctmn_arrivals,
+            ctmn_periods,
+            float(observation_time),
+            self.scenario,
+        )
+        result = SimulationResult(
+            event_arrivals,
+            ctmn_arrivals,
+            ctmn_periods,
+            _result.ctmn_intervals,
+            _result.ctmn_length,
+            _result.contaminated_events,
+        )
+        return result
+
     def __call__(
         self, observation_time: float, seed: None | int | np.random.Generator = None
     ):
         if self.scenario == "constant_period":
             return self.__call_cst_period__(observation_time, seed)
+
+        if self.use_julia:
+            return self.__call_julia__(observation_time, seed)
+
         reset_mode = self.scenario == "reset_interval"
         T = observation_time
         event_arrivals, ctmn_arrivals, ctmn_periods = self._generate_data(
@@ -225,6 +264,7 @@ class Simulator(_Simulator):
             if self.collect_events
             else None
         )
+
         result = SimulationResult(
             event_arrivals,
             ctmn_arrivals,
