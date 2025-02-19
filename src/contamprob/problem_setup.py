@@ -15,6 +15,7 @@ class PoissonProcess(NamedTuple):
         rng1, rng2 = np.random.default_rng(seed).spawn(2)
         num = rng1.poisson(self.rate * duration)
         arrivals = rng2.uniform(0, duration, num)
+        arrivals.sort()
         return arrivals
 
 
@@ -23,7 +24,7 @@ class ContaminationPeriodPopulation(Protocol):
 
     def __call__(
         self, size: int, seed: None | int | np.random.Generator = None
-    ) -> npt.NDArray[np.float_]:
+    ) -> npt.NDArray:
         """Generate samples from the population."""
 
 

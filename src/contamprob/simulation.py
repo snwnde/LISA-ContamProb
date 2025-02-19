@@ -144,7 +144,7 @@ class SimulationResult(NamedTuple):
     """The events that are contaminated."""
 
 
-class Simulator:
+class MergedIntervalSimulator:
     """Simulator for contamination probabilities."""
 
     def __init__(
