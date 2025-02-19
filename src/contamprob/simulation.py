@@ -1,7 +1,7 @@
 """Simulation of contamination probabilities."""
 
 import bisect
-from typing import NamedTuple, Self
+from typing import NamedTuple, Self, Literal
 import numpy as np
 import numpy.typing as npt
 from .problem_setup import ContaminationProcess, PoissonProcess
@@ -55,10 +55,14 @@ class Interval(NamedTuple):
         """Check if two intervals are disjoint."""
         return self.end < other.start or other.end < self.start
 
-    def merge_with(self, other: Self) -> Self:
+    def merge_with(self, other: Self, reset_mode: bool = False) -> Self:
         """Compute the union of two non-disjoint intervals."""
         assert not self.is_disjoint_with(other), "The intervals must not be disjoint."
-        return type(self)(min(self.start, other.start), max(self.end, other.end))
+        if not reset_mode:
+            return type(self)(min(self.start, other.start), max(self.end, other.end))
+        if self.start <= other.start:
+            return type(self)(self.start, other.end)
+        return type(self)(other.start, self.end)
 
 
 class Union:
@@ -67,9 +71,9 @@ class Union:
     def __init__(self, intervals: list[Interval]) -> None:
         self.intervals = intervals
 
-    def add_interval(self, other: Interval) -> Self:
-        """Add an interval to the union and sort according to the start time."""
-        return type(self)(self.intervals + [other])
+    def add_interval(self, other: Interval):
+        """Add an interval to the union."""
+        self.intervals.append(other)
 
     def contains(self, element: float) -> bool:
         """Check if an element is contained in the union."""
@@ -83,27 +87,26 @@ class Union:
 class DisjointUnion(Union):
     """A union of disjoint intervals."""
 
-    def add_interval(self, other: Interval) -> Self:
+    def add_interval(self, other: Interval, reset_mode: bool = False):
         """Add an interval to the union. If it overlaps with existing intervals, merge_with them.
 
         Caution: This method assumes that the intervals are sorted by start time.
         """
         # Copy the intervals
         intervals = self.intervals.copy()
-        other_ = other
         # Find the position to insert the new interval
-        idx = bisect.bisect_left(intervals, other_)
+        idx = bisect.bisect_left(intervals, other)
         # If the new interval overlaps with the previous interval, merge_with them
-        if idx > 0 and not intervals[idx - 1].is_disjoint_with(other_):
+        if idx > 0 and not intervals[idx - 1].is_disjoint_with(other):
             idx -= 1
             # We do not need to merge_with immediately since we will merge_with later
 
         # If the new interval overlaps with the next interval, merge_with them
-        while idx < len(intervals) and not intervals[idx].is_disjoint_with(other_):
-            other_ = other_.merge_with(intervals.pop(idx))
+        while idx < len(intervals) and not intervals[idx].is_disjoint_with(other):
+            other = other.merge_with(intervals.pop(idx), reset_mode=reset_mode)
         # Insert the new (possibly merged) interval
-        intervals.insert(idx, other_)
-        return type(self)(intervals)
+        intervals.insert(idx, other)
+        self.intervals = intervals
 
     @property
     def length(self) -> float:
@@ -136,7 +139,7 @@ class SimulationResult(NamedTuple):
     """The arrival times of the contamination periods."""
     ctmn_periods: npt.NDArray[np.float_]
     """The durations of the contamination periods."""
-    ctmn_intervals: DisjointUnion
+    ctmn_intervals: DisjointUnion | None
     """The contamination intervals."""
     ctmn_length: float
     """The total length of the contamination intervals."""
@@ -144,17 +147,17 @@ class SimulationResult(NamedTuple):
     """The events that are contaminated."""
 
 
-class MergedIntervalSimulator:
-    """Simulator for contamination probabilities."""
-
+class _Simulator:
     def __init__(
         self,
         ctnm_proc: ContaminationProcess,
         event_proc: PoissonProcess,
+        scenario: Literal["constant_period", "merged_interval", "reset_interval"],
         collect_events: bool = False,
     ) -> None:
         self.ctnm_proc = ctnm_proc
         self.event_proc = event_proc
+        self.scenario = scenario
         self.collect_events = collect_events
 
     def _generate_data(
@@ -168,9 +171,44 @@ class MergedIntervalSimulator:
         ctmn_periods = self.ctnm_proc.contamination(len(ctmn_arrivals), rngs[2])
         return event_arrivals, ctmn_arrivals, ctmn_periods
 
+
+class Simulator(_Simulator):
+    """Simulator for contamination probabilities for the merged interval scenario."""
+
+    def __call_cst_period__(
+        self, observation_time: float, seed: None | int | np.random.Generator = None
+    ):
+        T = observation_time
+        event_arrivals, ctmn_arrivals, ctmn_periods = self._generate_data(
+            observation_time, seed
+        )
+        ctmn_period = ctmn_periods[0]
+        if not all(ctmn_periods == ctmn_period):
+            raise ValueError("The contamination periods must be constant.")
+        if self.collect_events:
+            raise NotImplementedError(
+                "Collecting contaminated events is not supported."
+            )
+
+        separation = np.diff(ctmn_arrivals, append=T)
+        separation[separation > ctmn_period] = ctmn_period
+        ctmn_length = np.sum(separation)
+        result = SimulationResult(
+            event_arrivals,
+            ctmn_arrivals,
+            ctmn_periods,
+            None,
+            ctmn_length,
+            None,
+        )
+        return result
+
     def __call__(
         self, observation_time: float, seed: None | int | np.random.Generator = None
     ):
+        if self.scenario == "constant_period":
+            return self.__call_cst_period__(observation_time, seed)
+        reset_mode = self.scenario == "reset_interval"
         T = observation_time
         event_arrivals, ctmn_arrivals, ctmn_periods = self._generate_data(
             observation_time, seed
@@ -178,8 +216,8 @@ class MergedIntervalSimulator:
         ctmn_intervals_union = DisjointUnion([])
 
         for arrival, period in zip(ctmn_arrivals, ctmn_periods):
-            ctmn_intervals_union = ctmn_intervals_union.add_interval(
-                Interval.from_start(arrival, period).capped(T)
+            ctmn_intervals_union.add_interval(
+                Interval.from_start(arrival, period).capped(T), reset_mode=reset_mode
             )
         ctmn_length = ctmn_intervals_union.length
         contaminated_events = (

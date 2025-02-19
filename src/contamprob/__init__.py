@@ -5,7 +5,7 @@ from .problem_setup import (
     ExponentialDistribution,
     SingletonPopulation,
 )
-from .simulation import MergedIntervalSimulator
+from .simulation import Simulator
 from .approximation import NormalApproximation
 
 __all__ = [
@@ -14,6 +14,6 @@ __all__ = [
     "UniformDistribution",
     "ExponentialDistribution",
     "SingletonPopulation",
-    "MergedIntervalSimulator",
+    "Simulator",
     "NormalApproximation",
 ]
