@@ -281,7 +281,7 @@ class Simulator(_Simulator):
             observation_time, seed
         )
 
-        result = self.jl.SimuCore.result_gen(
+        result = self.jl.SimuCore.ctmn_simulate(
             event_arrivals,
             ctmn_arrivals,
             ctmn_periods,

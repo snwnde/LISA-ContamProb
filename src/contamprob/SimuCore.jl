@@ -1,11 +1,19 @@
 module SimuCore
 
 using PythonCall
-export result_gen
+export ctmn_simulate
 
 struct Interval
 	start::Float64
 	stop::Float64
+
+	function Interval(start::Float64, stop::Float64, do_check::Bool = false)
+		if do_check
+			@assert start <= stop "The start time must be less than or equal to the stop time."
+		end
+		return new(start, stop)
+	end
+
 end
 
 function isvalid(interval::Interval)
@@ -28,6 +36,17 @@ function are_disjoint(interval::Interval, other::Interval)
 	return interval.stop < other.start || other.stop < interval.start
 end
 
+function are_disjoint(intervals::Vector{Interval})
+	for i in 1:length(intervals)-1
+		for j in i+1:length(intervals)
+			if !are_disjoint(intervals[i], intervals[j])
+				return false
+			end
+		end
+	end
+	return true
+end
+
 function merge_intervals(interval::Interval, other::Interval, reset_mode::Bool = false)
 	@assert !are_disjoint(interval, other) "The intervals must not be disjoint."
 	if !reset_mode
@@ -41,6 +60,13 @@ end
 
 struct DisjointUnion
 	intervals::Vector{Interval}
+
+	function DisjointUnion(intervals::Vector{Interval}, do_check::Bool = false)
+		if do_check
+			@assert are_disjoint(intervals) "The intervals must be disjoint."
+		end
+		return new(intervals)
+	end
 end
 
 function add_interval(union::DisjointUnion, other::Interval, reset_mode::Bool = false)
@@ -74,7 +100,7 @@ struct SimulationResult
 	contaminated_events::Union{Nothing, PyArray{Float64, 1, true, true, Float64}}
 end
 
-function result_gen(
+function ctmn_simulate(
 	event_arrivals::Union{Nothing, PyArray{Float64, 1, true, true, Float64}},
 	ctmn_arrivals::PyArray{Float64, 1, true, true, Float64},
 	ctmn_periods::PyArray{Float64, 1, true, true, Float64},
