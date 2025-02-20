@@ -3,7 +3,7 @@
 import bisect
 import pathlib
 from collections.abc import Sequence
-from typing import NamedTuple, Self, Literal, Protocol, cast
+from typing import NamedTuple, Self, Protocol, cast
 import numpy as np
 import numpy.typing as npt
 from .problem_setup import ContaminationProcess, PoissonProcess
@@ -20,8 +20,7 @@ class _DisjointUnion(Protocol):
 
 
 # Julia Intervals
-class JuliaInterval(_Interval):
-    ...
+class JuliaInterval(_Interval): ...
 
 
 class JuliaDisjointUnion(_DisjointUnion):
@@ -213,13 +212,12 @@ class _Simulator:
         self,
         ctnm_proc: ContaminationProcess,
         event_proc: PoissonProcess,
-        scenario: Literal["constant_period", "merged_interval", "reset_interval"],
         collect_events: bool = False,
         use_julia: bool = True,
     ) -> None:
         self.ctnm_proc = ctnm_proc
         self.event_proc = event_proc
-        self.scenario = scenario
+        self.scenario = ctnm_proc.scenario
         self.collect_events = collect_events
         self.use_julia = use_julia
 

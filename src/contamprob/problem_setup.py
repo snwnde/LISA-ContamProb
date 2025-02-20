@@ -1,10 +1,12 @@
 """The signal contamination problem setting."""
 
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, Literal
 import numpy as np
 import numpy.typing as npt
 
 from .approximation import CtmnProcApprox, SingletonPopulationApprox
+
+SCENARIO = Literal["constant_period", "merged_interval", "reset_interval"]
 
 
 class PoissonProcess(NamedTuple):
@@ -72,9 +74,13 @@ class SingletonPopulation(NamedTuple):
         del seed
         return np.full(size, self.value)
 
-    def _get_approximator(self, process: PoissonProcess):
+    def _get_approximator(
+        self,
+        process: PoissonProcess,
+        scenario: SCENARIO,
+    ):
         """Return the contamination process approximation."""
-        return SingletonPopulationApprox(process, self)
+        return SingletonPopulationApprox(process, self, scenario)
 
 
 class ContaminationProcess(NamedTuple):
@@ -86,6 +92,9 @@ class ContaminationProcess(NamedTuple):
     contamination: ContaminationPeriodPopulation
     """The population of contamination periods."""
 
+    scenario: SCENARIO
+    """The contamination scenario."""
+
     @property
     def approx(self):
-        return self.contamination._get_approximator(self.process)
+        return self.contamination._get_approximator(self.process, self.scenario)

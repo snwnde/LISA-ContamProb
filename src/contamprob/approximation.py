@@ -9,6 +9,7 @@ import scipy.stats  # type: ignore[import]
 
 if TYPE_CHECKING:
     from .problem_setup import (
+        SCENARIO,
         PoissonProcess,
         ContaminationPeriodPopulation,
         ContaminationProcess,
@@ -21,7 +22,12 @@ _CTMN_POP = TypeVar("_CTMN_POP", bound="ContaminationPeriodPopulation")
 
 
 class CtmnProcApprox(Protocol):
-    def __init__(self, process: "PoissonProcess", contamination: _CTMN_POP): ...
+    def __init__(
+        self,
+        process: "PoissonProcess",
+        contamination: _CTMN_POP,
+        scenario: "SCENARIO",
+    ): ...
 
 
 class SingletonPopulationApprox:
@@ -29,9 +35,11 @@ class SingletonPopulationApprox:
         self,
         process: "PoissonProcess",
         contamination: "SingletonPopulation",
+        scenario: "SCENARIO",
     ):
         self.process = process
         self.contamination = contamination
+        self.scenario = scenario
 
     def __call__(self, observation_time: float):
         T = observation_time
