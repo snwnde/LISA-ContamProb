@@ -4,6 +4,8 @@ from typing import NamedTuple, Protocol
 import numpy as np
 import numpy.typing as npt
 
+from .approximation import CtmnProcApprox, SingletonPopulationApprox
+
 
 class PoissonProcess(NamedTuple):
     """A Poisson process."""
@@ -26,6 +28,9 @@ class ContaminationPeriodPopulation(Protocol):
         self, size: int, seed: None | int | np.random.Generator = None
     ) -> npt.NDArray:
         """Generate samples from the population."""
+
+    def _get_approximator(self, process: PoissonProcess) -> CtmnProcApprox:
+        """Return the contamination process approximation."""
 
 
 class UniformDistribution(NamedTuple):
@@ -67,6 +72,10 @@ class SingletonPopulation(NamedTuple):
         del seed
         return np.full(size, self.value)
 
+    def _get_approximator(self, process: PoissonProcess):
+        """Return the contamination process approximation."""
+        return SingletonPopulationApprox(process, self)
+
 
 class ContaminationProcess(NamedTuple):
     """A contamination process."""
@@ -76,3 +85,7 @@ class ContaminationProcess(NamedTuple):
 
     contamination: ContaminationPeriodPopulation
     """The population of contamination periods."""
+
+    @property
+    def approx(self):
+        return self.contamination._get_approximator(self.process)
