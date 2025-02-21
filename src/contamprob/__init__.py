@@ -6,9 +6,10 @@ from .problem_setup import (
     SingletonPopulation,
 )
 from .simulation import Simulator
-from .approximation import NormalApproximation
+from .approximation import NormalApproximation, ApproxConfig
 
 __all__ = [
+    "ApproxConfig",
     "PoissonProcess",
     "ContaminationProcess",
     "UniformDistribution",

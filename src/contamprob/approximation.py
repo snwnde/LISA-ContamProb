@@ -3,7 +3,10 @@ This module provides a normal approximation approach to solving the contaminatio
 probability problem.
 """
 
-from typing import TYPE_CHECKING, Protocol, TypeVar
+import abc
+import pathlib
+from typing import TYPE_CHECKING, Protocol, TypeVar, Literal, TypedDict, Unpack, Generic
+import logging
 import numpy as np
 import scipy.stats  # type: ignore[import]
 
@@ -14,11 +17,21 @@ if TYPE_CHECKING:
         ContaminationPeriodPopulation,
         ContaminationProcess,
         SingletonPopulation,
-        # UniformDistribution,
-        # ExponentialDistribution,
+        UniformDistribution,
+        ExponentialDistribution,
     )
 
-_CTMN_POP = TypeVar("_CTMN_POP", bound="ContaminationPeriodPopulation")
+_CTMN_POP = TypeVar("_CTMN_POP", bound="ContaminationPeriodPopulation", covariant=True)
+
+
+class ApproxConfig(TypedDict):
+    """The configuration for the approximation."""
+
+    prob_method: Literal["by_hand", "recurrence"]
+    """The probability calculation method."""
+
+    max_k: int
+    """The contamination number cut-off."""
 
 
 class CtmnProcApprox(Protocol):
@@ -27,7 +40,11 @@ class CtmnProcApprox(Protocol):
         process: "PoissonProcess",
         contamination: _CTMN_POP,
         scenario: "SCENARIO",
+        **config: Unpack[ApproxConfig],
     ): ...
+
+
+log = logging.getLogger(__name__)
 
 
 class SingletonPopulationApprox:
@@ -36,10 +53,12 @@ class SingletonPopulationApprox:
         process: "PoissonProcess",
         contamination: "SingletonPopulation",
         scenario: "SCENARIO",
+        **config: Unpack[ApproxConfig],
     ):
         self.process = process
         self.contamination = contamination
         self.scenario = scenario
+        self.config = config
 
     def __call__(self, observation_time: float):
         T = observation_time
@@ -56,12 +75,119 @@ class SingletonPopulationApprox:
         return mean, var
 
 
+class _JuliaApprox(Generic[_CTMN_POP]):
+    MODULE_NAME: Literal["Exponential", "Uniform"]
+
+    def __init__(
+        self,
+        process: "PoissonProcess",
+        contamination: _CTMN_POP,
+        scenario: "SCENARIO",
+        **config: Unpack[ApproxConfig],
+    ):
+        self.process = process
+        self.contamination = contamination
+        self.scenario = scenario
+        self.config = config
+
+        scenario_module = {
+            "merged_interval": "MergedInterval",
+            "rest_interval": "ResetInterval",
+        }[scenario]
+
+        import juliacall  # type: ignore[import]
+
+        jl = juliacall.newmodule(__name__)
+        approx_main = pathlib.Path(__file__).parent / "approx" / "ApproxMain.jl"
+        jl.seval(f'include("{approx_main}")')
+        self.jl = getattr(getattr(jl.ApproxMain, self.MODULE_NAME), scenario_module)
+
+    @abc.abstractmethod
+    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]: ...
+
+    def __call__(self, observation_time: float):
+        ctmn_rate = self.process.rate
+        pdf_mean, pdf_var = self._get_pdf_mean_var(observation_time)
+        log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}")
+        gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
+        n_estimate = observation_time * ctmn_rate  # TDOO: check this
+        # n_estimate = observation_time / pdf_mean
+        log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
+        frac_mean = pdf_mean / (pdf_mean + gap_mean)
+        frac_var = (1 / n_estimate) * (
+            pdf_var / (pdf_mean + gap_mean) ** 2
+            + pdf_mean**2 / (pdf_mean + gap_mean) ** 4 * (pdf_var + gap_var)
+            - 2 * pdf_mean**2 * pdf_var / (pdf_mean + gap_mean) ** 3
+        )
+        log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
+        mean = frac_mean * observation_time
+        variance = frac_var * observation_time**2
+        log.info(f"mean: {mean}, variance: {variance}")
+        return mean, variance
+
+
+class ExponentialDistributionApprox(_JuliaApprox):
+    MODULE_NAME = "Exponential"
+
+    def __init__(
+        self,
+        process: "PoissonProcess",
+        contamination: "ExponentialDistribution",
+        scenario: "SCENARIO",
+        **config: Unpack[ApproxConfig],
+    ):
+        super().__init__(process, contamination, scenario, **config)
+        self.contamination = contamination
+
+    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]:
+        ctmn_rate = float(self.process.rate)
+        mean_ctmn = float(self.contamination.mean)
+        obs_time = float(observation_time)
+        max_k = self.config["max_k"]
+        if self.config["prob_method"] == "by_hand":
+            prob = self.jl.ProbByHand(ctmn_rate, mean_ctmn, max_k)
+            mean = self.jl.mean(prob, obs_time)
+            variance = self.jl.variance(prob, obs_time)
+        else:
+            raise NotImplementedError
+        return mean, variance
+
+
+class UniformDistributionApprox(_JuliaApprox):
+    MODULE_NAME = "Uniform"
+
+    def __init__(
+        self,
+        process: "PoissonProcess",
+        contamination: "UniformDistribution",
+        scenario: "SCENARIO",
+        **config: Unpack[ApproxConfig],
+    ):
+        super().__init__(process, contamination, scenario, **config)
+        self.contamination = contamination
+
+    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]:
+        ctmn_rate = float(self.process.rate)
+        max_ctmn = float(self.contamination.upper)
+        obs_time = float(observation_time)
+        max_k = self.config["max_k"]
+        if self.config["prob_method"] == "by_hand":
+            prob = self.jl.ProbByHand(ctmn_rate, max_ctmn, max_k)
+            mean = self.jl.mean(prob, max_k * max_ctmn)
+            variance = self.jl.variance(prob)
+        else:
+            raise NotImplementedError
+        return mean, variance
+
+
 class NormalApproximation:
     """A normal approximation to the contamination process."""
 
-    def __init__(self, ctmn_proc: "ContaminationProcess"):
+    def __init__(
+        self, ctmn_proc: "ContaminationProcess", **config: Unpack[ApproxConfig]
+    ):
         self.ctmn_proc = ctmn_proc
-        self.ctmn_proc_approx = ctmn_proc.approx
+        self.ctmn_proc_approx = ctmn_proc.approx(**config)
 
     def __call__(self, observation_time: float):
         """Return the normal distribution approximation for the observation time."""

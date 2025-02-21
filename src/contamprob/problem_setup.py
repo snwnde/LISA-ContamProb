@@ -1,10 +1,16 @@
 """The signal contamination problem setting."""
 
-from typing import NamedTuple, Protocol, Literal
+from typing import NamedTuple, Protocol, Literal, Unpack
 import numpy as np
 import numpy.typing as npt
 
-from .approximation import CtmnProcApprox, SingletonPopulationApprox
+from .approximation import (
+    ApproxConfig,
+    CtmnProcApprox,
+    SingletonPopulationApprox,
+    ExponentialDistributionApprox,
+    UniformDistributionApprox,
+)
 
 SCENARIO = Literal["constant_period", "merged_interval", "reset_interval"]
 
@@ -31,21 +37,36 @@ class ContaminationPeriodPopulation(Protocol):
     ) -> npt.NDArray:
         """Generate samples from the population."""
 
-    def _get_approximator(self, process: PoissonProcess) -> CtmnProcApprox:
+    def _get_approximator(
+        self,
+        process: PoissonProcess,
+        scenario: SCENARIO,
+        **config: Unpack[ApproxConfig],
+    ) -> CtmnProcApprox:
         """Return the contamination process approximation."""
 
 
 class UniformDistribution(NamedTuple):
-    """A uniform distribution."""
+    """A uniform distribution.
+    
+    The distribution is defined on the interval [0, upper].
+    """
 
-    lower: float
-    """The lower bound of the distribution."""
     upper: float
     """The upper bound of the distribution."""
 
     def __call__(self, size: int, seed: None | int | np.random.Generator = None):
         rng = np.random.default_rng(seed)
-        return rng.uniform(self.lower, self.upper, size)
+        return rng.uniform(0, self.upper, size)
+
+    def _get_approximator(
+        self,
+        process: PoissonProcess,
+        scenario: SCENARIO,
+        **config: Unpack[ApproxConfig],
+    ):
+        """Return the contamination process approximation."""
+        return UniformDistributionApprox(process, self, scenario, **config)
 
 
 class ExponentialDistribution(NamedTuple):
@@ -58,10 +79,24 @@ class ExponentialDistribution(NamedTuple):
         rng = np.random.default_rng(seed)
         return rng.exponential(1 / self.rate, size)
 
+    @property
+    def mean(self):
+        """The mean of the distribution."""
+        return 1 / self.rate
+
     @classmethod
     def from_scale(cls, scale: float):
         """Create an exponential distribution from the scale parameter."""
         return cls(rate=1 / scale)
+
+    def _get_approximator(
+        self,
+        process: PoissonProcess,
+        scenario: SCENARIO,
+        **config: Unpack[ApproxConfig],
+    ):
+        """Return the contamination process approximation."""
+        return ExponentialDistributionApprox(process, self, scenario, **config)
 
 
 class SingletonPopulation(NamedTuple):
@@ -78,9 +113,10 @@ class SingletonPopulation(NamedTuple):
         self,
         process: PoissonProcess,
         scenario: SCENARIO,
+        **config: Unpack[ApproxConfig],
     ):
         """Return the contamination process approximation."""
-        return SingletonPopulationApprox(process, self, scenario)
+        return SingletonPopulationApprox(process, self, scenario, **config)
 
 
 class ContaminationProcess(NamedTuple):
@@ -95,6 +131,7 @@ class ContaminationProcess(NamedTuple):
     scenario: SCENARIO
     """The contamination scenario."""
 
-    @property
-    def approx(self):
-        return self.contamination._get_approximator(self.process, self.scenario)
+    def approx(self, **config: Unpack[ApproxConfig]):
+        return self.contamination._get_approximator(
+            self.process, self.scenario, **config
+        )
