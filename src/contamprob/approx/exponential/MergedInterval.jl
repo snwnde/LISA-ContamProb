@@ -12,14 +12,14 @@ function (prob::ProbByHand)(::Val{1}, t::Float64)
 end
 
 function (prob::ProbByHand)(::Val{2}, t::Float64)
-	return prob.lambda * prob(1, t) * (t - (1 / prob.nu) * (1 - exp(-prob.nu * t)))
+	return 2 * prob.lambda * prob(1, t) * (t - (1 / prob.nu) * (1 - exp(-prob.nu * t)))
 end
 
 function (prob::ProbByHand)(::Val{3}, t::Float64)
 	nu_t = prob.nu * t
 	nu = prob.nu
 	nu_2 = prob.nu^2
-	return prob.lambda^2 * prob(1, t) *
+	return 2 * prob.lambda^2 * prob(1, t) *
 		   (
 			   t^2
 			   +
