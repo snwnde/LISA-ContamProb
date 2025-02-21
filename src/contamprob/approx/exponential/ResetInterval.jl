@@ -7,7 +7,10 @@ using Integrals
 export ProbByHand, mean, variance, k_weighted
 
 @eval $(define_exp_prob_struct(:ProbByHand))
-@eval $(define_exp_prob_struct(:Prob))
+
+# Make Prob an alias of ProbByHand 
+# since in this case we can compute all orders by hand
+const Prob = ProbByHand
 
 function (prob::ProbByHand)(t::Float64)
 	return prob.nu * exp(-prob.nu * t)

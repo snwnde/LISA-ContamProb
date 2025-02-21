@@ -103,7 +103,9 @@ class _JuliaApprox(Generic[_CTMN_POP]):
         self.jl = getattr(getattr(jl.ApproxMain, self.MODULE_NAME), scenario_module)
 
     @abc.abstractmethod
-    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]: ...
+    def _get_pdf_results(
+        self, observation_time: float
+    ) -> tuple[float, float, float]: ...
 
     def __call__(self, observation_time: float):
         ctmn_rate = self.process.rate
