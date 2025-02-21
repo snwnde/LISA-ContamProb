@@ -2,15 +2,10 @@ module MergedInterval
 
 include("../Template.jl")
 using .Template
-using Integrals
 export ProbByHand, mean, variance
 
 @eval $(define_exp_prob_struct(:ProbByHand))
 @eval $(define_exp_prob_struct(:Prob))
-
-@eval $(define_prob_methods(:ProbByHand))
-@eval $(define_prob_methods(:Prob))
-
 
 function (prob::ProbByHand)(::Val{1}, t::Float64)
 	return prob.nu * exp(-(prob.lambda + prob.nu) * t)

@@ -2,14 +2,10 @@ module MergedInterval
 
 include("../Template.jl")
 using .Template
-using Integrals
 export ProbByHand, mean, variance
 
 @eval $(define_uniform_prob_struct(:ProbByHand))
 @eval $(define_uniform_prob_struct(:Prob))
-
-@eval $(define_prob_methods(:ProbByHand))
-@eval $(define_prob_methods(:Prob))
 
 
 heaviside(x::Real) = x < 0 ? 0.0 : 1.0
