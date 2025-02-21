@@ -7,6 +7,7 @@ from .problem_setup import (
 )
 from .simulation import Simulator
 from .approximation import NormalApproximation, ApproxConfig
+from . import logger
 
 __all__ = [
     "ApproxConfig",
@@ -17,4 +18,5 @@ __all__ = [
     "SingletonPopulation",
     "Simulator",
     "NormalApproximation",
+    "logger",
 ]

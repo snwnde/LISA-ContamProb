@@ -170,11 +170,15 @@ class UniformDistributionApprox(_JuliaApprox):
         ctmn_rate = float(self.process.rate)
         max_ctmn = float(self.contamination.upper)
         obs_time = float(observation_time)
+        del obs_time
         max_k = self.config["max_k"]
         if self.config["prob_method"] == "by_hand":
             prob = self.jl.ProbByHand(ctmn_rate, max_ctmn, max_k)
+            # Either we provide max_k * max_ctmn here either we leave it to the julia code,
+            # which will use the default value of Inf. The integration works fine
+            # with Inf, but badly with obs_time.
             mean = self.jl.mean(prob, max_k * max_ctmn)
-            variance = self.jl.variance(prob)
+            variance = self.jl.variance(prob, max_k * max_ctmn)
         else:
             raise NotImplementedError
         return mean, variance
