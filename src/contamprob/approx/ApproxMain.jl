@@ -2,7 +2,9 @@ module ApproxMain
 
 module Exponential
 	include("exponential/MergedInterval.jl")
+	include("exponential/ResetInterval.jl")
 	import .MergedInterval
+	import .ResetInterval
 end
 
 module Uniform

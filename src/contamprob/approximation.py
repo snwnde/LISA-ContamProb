@@ -92,7 +92,7 @@ class _JuliaApprox(Generic[_CTMN_POP]):
 
         scenario_module = {
             "merged_interval": "MergedInterval",
-            "rest_interval": "ResetInterval",
+            "reset_interval": "ResetInterval",
         }[scenario]
 
         import juliacall  # type: ignore[import]
@@ -103,15 +103,14 @@ class _JuliaApprox(Generic[_CTMN_POP]):
         self.jl = getattr(getattr(jl.ApproxMain, self.MODULE_NAME), scenario_module)
 
     @abc.abstractmethod
-    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]: ...
+    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]: ...
 
     def __call__(self, observation_time: float):
         ctmn_rate = self.process.rate
-        pdf_mean, pdf_var = self._get_pdf_mean_var(observation_time)
-        log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}")
+        pdf_mean, pdf_var, pdf_avg_k = self._get_pdf_results(observation_time)
+        log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}, pdf_avg_k: {pdf_avg_k}")
         gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
-        n_estimate = observation_time * ctmn_rate  # TDOO: check this
-        # n_estimate = observation_time / pdf_mean
+        n_estimate = observation_time * ctmn_rate / pdf_avg_k
         log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
         frac_mean = pdf_mean / (pdf_mean + gap_mean)
         frac_var = (1 / n_estimate) * (
@@ -139,19 +138,22 @@ class ExponentialDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]:
+    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]:
         ctmn_rate = float(self.process.rate)
         mean_ctmn = float(self.contamination.mean)
         obs_time = float(observation_time)
         del obs_time
-        max_k = self.config["max_k"]
+        max_k = max_k = self.config.get("max_k", -1)
+        if max_k < 0 and self.scenario != "reset_interval":
+            raise ValueError(f"max_k must be set for {self.scenario} scenario")
         if self.config["prob_method"] == "by_hand":
             prob = self.jl.ProbByHand(ctmn_rate, mean_ctmn, max_k)
             mean = self.jl.mean(prob)
             variance = self.jl.variance(prob)
+            avg_k = self.jl.avg_k(prob)
         else:
             raise NotImplementedError
-        return mean, variance
+        return mean, variance, avg_k
 
 
 class UniformDistributionApprox(_JuliaApprox):
@@ -167,12 +169,14 @@ class UniformDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_mean_var(self, observation_time: float) -> tuple[float, float]:
+    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]:
         ctmn_rate = float(self.process.rate)
         max_ctmn = float(self.contamination.upper)
         obs_time = float(observation_time)
         del obs_time
-        max_k = self.config["max_k"]
+        max_k = max_k = self.config.get("max_k", -1)
+        if max_k < 0:
+            raise ValueError(f"max_k must be set for {self.scenario} scenario")
         if self.config["prob_method"] == "by_hand":
             prob = self.jl.ProbByHand(ctmn_rate, max_ctmn, max_k)
             # Either we provide max_k * max_ctmn here either we leave it to the julia code,
@@ -180,9 +184,10 @@ class UniformDistributionApprox(_JuliaApprox):
             # with Inf, but badly with obs_time.
             mean = self.jl.mean(prob)
             variance = self.jl.variance(prob)
+            avg_k = self.jl.avg_k(prob)
         else:
             raise NotImplementedError
-        return mean, variance
+        return mean, variance, avg_k
 
 
 class NormalApproximation:

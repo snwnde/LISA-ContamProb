@@ -5,7 +5,7 @@ from .problem_setup import (
     ExponentialDistribution,
     SingletonPopulation,
 )
-from .simulation import Simulator
+from .simulation import Simulator, SimulationResult
 from .approximation import NormalApproximation, ApproxConfig
 from . import logger
 
@@ -17,6 +17,7 @@ __all__ = [
     "ExponentialDistribution",
     "SingletonPopulation",
     "Simulator",
+    "SimulationResult",
     "NormalApproximation",
     "logger",
 ]
