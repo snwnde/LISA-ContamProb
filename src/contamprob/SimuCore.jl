@@ -84,6 +84,9 @@ function add_interval(union::DisjointUnion, other::Interval, reset_mode::Bool = 
 end
 
 function measure(union::DisjointUnion)
+	if isempty(union.intervals)
+		return 0.0
+	end
 	return sum(measure(interval) for interval in union.intervals)
 end
 

@@ -7,9 +7,11 @@ from .problem_setup import (
 )
 from .simulation import Simulator, SimulationResult
 from .approximation import NormalApproximation, ApproxConfig
+from .analytical import AnalyticalSolver
 from . import logger
 
 __all__ = [
+    "AnalyticalSolver",
     "ApproxConfig",
     "PoissonProcess",
     "ContaminationProcess",

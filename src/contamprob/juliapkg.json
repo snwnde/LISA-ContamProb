@@ -4,6 +4,10 @@
         "Integrals": {
             "uuid": "de52edbc-65ea-441a-8357-d3a637375a31",
             "version": "4.5.0"
+        },
+        "Polynomials": {
+            "uuid": "f27b6e38-b328-58d1-80ce-0feddd5e7a45",
+            "version": "4.0.17"
         }
     }
 }

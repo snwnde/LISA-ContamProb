@@ -1,6 +1,6 @@
 """The signal contamination problem setting."""
 
-from typing import NamedTuple, Protocol, Literal, Unpack
+from typing import NamedTuple, Protocol, Literal, Unpack, TypeVar, Generic
 import numpy as np
 import numpy.typing as npt
 
@@ -13,6 +13,7 @@ from .approximation import (
 )
 
 SCENARIO = Literal["constant_period", "merged_interval", "reset_interval"]
+CPP = TypeVar("CPP", bound="ContaminationPeriodPopulation")
 
 
 class PoissonProcess(NamedTuple):
@@ -48,7 +49,7 @@ class ContaminationPeriodPopulation(Protocol):
 
 class UniformDistribution(NamedTuple):
     """A uniform distribution.
-    
+
     The distribution is defined on the interval [0, upper].
     """
 
@@ -119,13 +120,13 @@ class SingletonPopulation(NamedTuple):
         return SingletonPopulationApprox(process, self, scenario, **config)
 
 
-class ContaminationProcess(NamedTuple):
+class ContaminationProcess(NamedTuple, Generic[CPP]):
     """A contamination process."""
 
     process: PoissonProcess
     """The process generating the contamination periods."""
 
-    contamination: ContaminationPeriodPopulation
+    contamination: CPP
     """The population of contamination periods."""
 
     scenario: SCENARIO
