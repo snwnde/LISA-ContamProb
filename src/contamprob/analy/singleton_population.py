@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from collections import UserDict
 
 import numpy as np
+from pyparsing import C
 
 from ..problem_setup import ContaminationProcess, PoissonProcess, SingletonPopulation
 from ..analytical import Case
@@ -470,54 +471,38 @@ class LoopSolver:
         """Fill in all the coefficients up to the given indice."""
         max_ind = Case(*ind)
 
-        for n in range(self.table.max_indice.n + 1, max_ind.n + 1):
-            # # The case l = 0
-            # for m in range(n + 1):
-            #     self.fill_in_a((n, 0, m))
-            #     self.fill_in_A((n, 0, m))
-            # # The case l >= 0
+        def _fill(n: int, l: int):  # noqa: E741
             if n == 0:
-                for l in range(self.table.max_indice.l + 1, max_ind.l + 1):  # noqa: E741
-                    for j in range(n + l + 1):
-                        self.table.a[(0, l, 0, j)] = kronecker_delta(j, 0)
-                        self.table.A[(0, l, 0, j)] = 0
+                for j in range(n + l + 1):
+                    self.table.a[(0, l, 0, j)] = kronecker_delta(j, 0)
+                    self.table.A[(0, l, 0, j)] = 0
             else:
-                for l in range(self.table.max_indice.l + 1, max_ind.l + 1):  # noqa: E741
-                    for m in range(n + 1):
-                        for j in range(n + l + 1):
-                            for r in range(j + 1):
-                                self.fill_in_ksi((0, r, m, j))
-                                self.fill_in_zeta((0, r, m, j))
-                                self.fill_in_Ksi((0, r, m, j))
-                                self.fill_in_Zeta((0, r, m, j))
-                        for j in range(n + l + 2):
-                            for r in range(j + 2):
-                                self.fill_in_eta((0, r, m, j))
-                                self.fill_in_theta((0, r, m, j))
-                        for q in range(l + 1):
-                            for r in range(q + 1):
-                                self.fill_in_ksi((q, r, m, 0))
-                                self.fill_in_zeta((q, r, m, 0))
-                                self.fill_in_Ksi((q, r, m, 0))
-                                self.fill_in_Zeta((q, r, m, 0))
-                            for r in range(q + 2):
-                                self.fill_in_eta((q, r, m, 0))
-                                self.fill_in_theta((q, r, m, 0))
-                        for q in range(1, l + 1):
-                            for j in range(1, n + l - q + 1):
-                                for r in range(q + j + 1):
-                                    self.fill_in_ksi((q, r, m, j))
-                                    self.fill_in_zeta((q, r, m, j))
-                                    self.fill_in_Ksi((q, r, m, j))
-                                    self.fill_in_Zeta((q, r, m, j))
-                            for j in range(1, n + l - q + 1):
-                                for r in range(q + j + 2):
-                                    self.fill_in_eta((q, r, m, j))
-                                    self.fill_in_theta((q, r, m, j))
-                        self.fill_in_a((n, l, m))
-                        self.fill_in_A((n, l, m))
+                for m in range(n + 1):
+                    for q in range(0, l + 1):
+                        for j in range(0, n + l - q + 1):
+                            for r in range(q + j + 1):
+                                self.fill_in_ksi((q, r, m, j))
+                                self.fill_in_zeta((q, r, m, j))
+                                self.fill_in_Ksi((q, r, m, j))
+                                self.fill_in_Zeta((q, r, m, j))
+                        for j in range(0, n + l - q + 2):
+                            for r in range(q + j + 2):
+                                self.fill_in_eta((q, r, m, j))
+                                self.fill_in_theta((q, r, m, j))
+                    self.fill_in_a((n, l, m))
+                    self.fill_in_A((n, l, m))
 
-        self.table.max_indice = max_ind
+        for n in range(0, max_ind.n + 1):
+            l_start = (
+                self.table.max_indice.l + 1 if n < self.table.max_indice.l + 1 else 0
+            )
+            for l in range(l_start, max_ind.l + 1):  # noqa: E741
+                _fill(n, l)
+
+        self.table.max_indice = Case(
+            max(max_ind.n, self.table.max_indice.n),
+            max(max_ind.l, self.table.max_indice.l),
+        )
 
     def get_piecewise_monomial(self, m: int, j: int):
         def piecewise_monomial(t):

@@ -24,47 +24,75 @@ end
 MainInd = @NamedTuple{n::Int, l::Int, m::Int, j::Int}
 AuxInd = @NamedTuple{q::Int, r::Int, m::Int, j::Int}
 
-mutable struct Table
-	a::Dict{MainInd, Float64}
-	A::Dict{MainInd, Float64}
-	ξ::Dict{AuxInd, Float64}
-	Ξ::Dict{AuxInd, Float64}
-	ζ::Dict{AuxInd, Float64}
-	Z::Dict{AuxInd, Float64}
-	# Above not the greek letter "Z" but the latin letter "Z"
-	η::Dict{AuxInd, Float64}
-	θ::Dict{AuxInd, Float64}
+struct MainTable
+	dict::Dict{MainInd, Float64}
+
+	function MainTable()
+		return new(Dict())
+	end
+end
+
+struct AuxTable
+	dict::Dict{AuxInd, Float64}
+
+	function AuxTable()
+		return new(Dict())
+	end
+end
+
+function Base.setindex!(table::MainTable, value::Float64, ind::MainInd)
+	table.dict[ind] = value
+end
+
+function Base.setindex!(table::AuxTable, value::Float64, ind::AuxInd)
+	table.dict[ind] = value
+end
+
+function (table::MainTable)(n::Int, l::Int, m::Int, j::Int)
+	ind = (n = n, l = l, m = m, j = j)
+	if m == -1 || m == n + 1
+		return 0.0
+	end
+	return table.dict[ind]
+end
+
+function (table::AuxTable)(q::Int, r::Int, m::Int, j::Int)
+	ind = (q = q, r = r, m = m, j = j)
+	if m == -1
+		return 0.0
+	end
+	return table.dict[ind]
+end
+
+
+mutable struct AuxRegister
+	ξ::AuxTable
+	Ξ::AuxTable
+	ζ::AuxTable
+	Z::AuxTable # Not the greek letter "Z" but the latin letter "Z"
+	η::AuxTable
+	θ::AuxTable
+
+	function AuxRegister(ξ = AuxTable(), Ξ = AuxTable(),
+		ζ = AuxTable(), Z = AuxTable(), η = AuxTable(), θ = AuxTable())
+		return new(ξ, Ξ, ζ, Z, η, θ)
+
+	end
+end
+
+
+mutable struct Register
+	a::MainTable
+	A::MainTable
+	aux::AuxRegister
 	max_n::Int
 	max_l::Int
 
-	function Table(max_n::Int, max_l::Int, a = Dict(), A = Dict(), ξ = Dict(), Ξ = Dict(),
-		ζ = Dict(), Z = Dict(), η = Dict(), θ = Dict())
-		return new(a, A, ξ, Ξ, ζ, Z, η, θ, max_n, max_l)
+	function Register(max_n::Int = -1, max_l::Int = -1, a = MainTable(), A = MainTable(),
+		aux = AuxRegister())
+		return new(a, A, aux, max_n, max_l)
 
 	end
-end
-
-# Custom getindex methods for the dictionaries within Table
-function Base.getindex(dict::Dict{MainInd, Float64}, ind::MainInd)
-	if ind.m == -1 || ind.m == ind.n + 1
-		return 0.0
-	end
-	return dict[ind]
-end
-
-function Base.getindex(dict::Dict{AuxInd, Float64}, ind::AuxInd)
-	if ind.m == -1
-		return 0.0
-	end
-	return dict[ind]
-end
-
-function Base.getindex(dict::Dict{MainInd, Float64}, ind::Tuple{Int, Int, Int, Int})
-	return dict[(n = ind[1], l = ind[2], m = ind[3], j = ind[4])]
-end
-
-function Base.getindex(dict::Dict{AuxInd, Float64}, ind::Tuple{Int, Int, Int, Int})
-	return dict[(q = ind[1], r = ind[2], m = ind[3], j = ind[4])]
 end
 
 
@@ -75,98 +103,109 @@ struct Problem
 	λ::Float64
 	μ::Float64
 	τ::Float64
-	table::Table
+	register::Register
 
 	function Problem(ctmn_rate::Float64, event_rate::Float64,
-		ctmn_period::Float64, table::Table = Table(-1, -1))
+		ctmn_period::Float64, register::Register = Register())
 		return new(ctmn_rate, event_rate, ctmn_period, ctmn_rate,
-			event_rate, ctmn_period, table)
+			event_rate, ctmn_period, register)
 	end
 end
 
 
-function fill_ξ!(problem::Problem, ind::AuxInd)
+function fill!(problem::Problem, ::Val{T}, ind::AuxInd) where T
+	table = getfield(problem.register.aux, T)
+	if haskey(table.dict, ind)
+		return
+	end
+	fill_logic!(problem, Val(T), ind)
+end
+
+function fill!(problem::Problem, ::Val{T}, ind::MainInd) where T
+	table = getfield(problem.register, T)
+	if haskey(table.dict, ind)
+		return
+	end
+	fill_logic!(problem, Val(T), ind)
+end
+
+
+function fill_logic!(problem::Problem, ::Val{:ξ}, ind::AuxInd)
 	μ = problem.μ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	ξ = problem.table.ξ
+	ξ = problem.register.aux.ξ
+
 	if r > j
 		ξ[ind] = 0.0
 	elseif q == 0
 		ξ[ind] = -factorial(j) / factorial(r) / (-μ)^(1 + j - r)
 	elseif j == 0
-		@assert r == 0 "r must be 0"
 		ξ[ind] = 1.0 / μ
 	else
-		ξ[ind] = ξ[(q - 1, r, m, j)] - j / μ * ξ[(q, r, m, j - 1)]
+		ξ[ind] = ξ(q - 1, r, m, j) - j / μ * ξ(q, r, m, j - 1)
 	end
-
 end
 
-
-function fill_ζ!(problem::Problem, ind::AuxInd)
+function fill_logic!(problem::Problem, ::Val{:ζ}, ind::AuxInd)
 	μ = problem.μ
 	τ = problem.τ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	ζ = problem.table.ζ
+	ζ = problem.register.aux.ζ
 
 	if r > j
 		ζ[ind] = 0.0
 	elseif q == 0
 		ζ[ind] = exp(-μ * τ) * factorial(j) / factorial(r) / (-μ)^(1 + j - r)
 	elseif j == 0
-		@assert r == 0 "r must be 0"
 		ζ[ind] = -exp(-μ * τ) * Polynomial([1 / factorial(k) for k in 0:q])(μ * τ) / μ
 	else
 		term_1 = (μ * τ)^q / factorial(q) * exp(-μ * τ) / (-μ) * δ(r, j)
-		term_2_3 = ζ[(q - 1, r, m, j)] - j / μ * ζ[(q, r, m, j - 1)]
+		term_2_3 = ζ(q - 1, r, m, j) - j / μ * ζ(q, r, m, j - 1)
 		ζ[ind] = term_1 + term_2_3
 	end
 end
 
-function fill_Ξ!(problem::Problem, ind::AuxInd)
+function fill_logic!(problem::Problem, ::Val{:Ξ}, ind::AuxInd)
 	μ = problem.μ
 	τ = problem.τ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	Ξ = problem.table.Ξ
+	Ξ = problem.register.aux.Ξ
 
 	if r > q
 		Ξ[ind] = 0.0
 	elseif q == 0
-		@assert r == 0 "r must be 0"
 		Ξ[ind] = exp(μ * m * τ) * factorial(j) / (-μ)^(1 + j)
 	elseif j == 0
 		Ξ[ind] = -1 / factorial(r) * μ^(r - 1) * exp(μ * m * τ)
 	else
-		Ξ[ind] = Ξ[(q - 1, r, m, j)] - j / μ * Ξ[(q, r, m, j - 1)]
+		Ξ[ind] = Ξ(q - 1, r, m, j) - j / μ * Ξ(q, r, m, j - 1)
 	end
 end
 
-
-function fill_Z!(problem::Problem, ind::AuxInd)
+function fill_logic!(problem::Problem, ::Val{:Z}, ind::AuxInd)
 	μ = problem.μ
 	τ = problem.τ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	Z = problem.table.Z
+	Z = problem.register.aux.Z
 
 	if r > q
 		Z[ind] = 0.0
 	elseif q == 0
-		@assert r == 0 "r must be 0"
 		Z[ind] = -exp(μ * m * τ) * factorial(j) / (-μ)^(1 + j)
 	elseif j == 0
 		Z[ind] = exp(μ * m * τ) * sum(
 			1 / factorial(k) * μ^(k - 1) * binomial(k, r) * τ^(k - r) for k in r:q
 		)
 	else
-		Z[ind] = Z[(q - 1, r, m, j)] - j / μ * Z[(q, r, m, j - 1)]
+		Z[ind] = Z(q - 1, r, m, j) - j / μ * Z(q, r, m, j - 1)
 	end
 end
 
 
-function fill_η!(problem::Problem, ind::AuxInd)
+function fill_logic!(problem::Problem, ::Val{:η}, ind::AuxInd)
 	μ = problem.μ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	η = problem.table.η
+	η = problem.register.aux.η
 
 	if r > j + q + 1
 		η[ind] = 0.0
@@ -183,16 +222,15 @@ function fill_η!(problem::Problem, ind::AuxInd)
 			η[ind] = 0.0
 		end
 	else
-		η[ind] = μ / (j + 1) * η[(q - 1, r, m, j + 1)]
+		η[ind] = μ / (j + 1) * η(q - 1, r, m, j + 1)
 	end
 end
 
-
-function fill_θ!(problem::Problem, ind::AuxInd)
+function fill_logic!(problem::Problem, ::Val{:θ}, ind::AuxInd)
 	μ = problem.μ
 	τ = problem.τ
 	q, r, m, j = ind.q, ind.r, ind.m, ind.j
-	θ = problem.table.θ
+	θ = problem.register.aux.θ
 
 	if r > j + q + 1
 		θ[ind] = 0.0
@@ -212,230 +250,174 @@ function fill_θ!(problem::Problem, ind::AuxInd)
 		end
 	else
 		term_1 = -1.0 / (j + 1) * (μ * τ)^q / factorial(q) * δ(r, j + 1)
-		term_2 = μ / (j + 1) * θ[(q - 1, r, m, j + 1)]
+		term_2 = μ / (j + 1) * θ(q - 1, r, m, j + 1)
 		θ[ind] = term_1 + term_2
 	end
 end
 
-# function fill_a!(problem::Problem, ind::MainInd)
-# 	μ = problem.μ
-# 	τ = problem.τ
-# 	n, l, m, j = ind.n, ind.l, ind.m, ind.j
-# 	a = problem.table.a
-# 	A = problem.table.A
-# 	ξ = problem.table.ξ
-# 	ζ = problem.table.ζ
 
-# 	if n == 0
-# 		a[ind] = δ(j, 0)
-# 	elseif l == 0
-# 		if j == 0
-# 			term_1 = λ * exp(-μ * m * τ) * sum(
-# 						 A[(n - 1, 0, m - 1, k)] * factorial(k) / (μ^(1 + k)) for k in 0:(n-1)
-# 					 )
-# 			term_2_3 = λ * sum(
-# 				(-a[(n - 1, 0, m, k)] + a[(n - 1, 0, m - 1, k)] * exp(-μ * τ)) * factorial(k) / (-μ)^(1 + k) for k in 0:(n-1)
-# 			)
-# 			a[ind] = term_1 + term_2_3
-# 		else
-# 			term_1 = λ * exp(-μ * τ) * a[(n - 1, 0, m - 1, j - 1)] / j
-# 			term_2_3 = λ * sum(
-# 				(-a[(n - 1, 0, m, k)] + a[(n - 1, 0, m - 1, k)] * exp(-μ * τ)) * factorial(k) / factorial(j) / (-μ)^(1 + k - j) for k in j:(n-1)
-# 			)
-# 			a[ind] = term_1 + term_2_3
-# 		end
-# 	else
-# 		if j == 0
-# 			term_1 = λ * exp(-μ * m * τ) * Polynomial(
-# 						 [1 / factorial(q) * sum(A[(n - 1, l - q, m - 1, k)] * factorial(k) / μ^(k + 1) for k in 0:(n+l-q)) for q in 0:l]
-# 					 )(μ * τ)
-# 			term_2_3 = λ * sum(
-# 				sum(a[(n - 1, l - q, m, k)] * ξ[(q, 0, m, k)] + a[(n - 1, l - q, m - 1, k)] * ζ[(q, 0, m - 1, k)] for k in 0:(n+l-q)) for q in 0:l
-# 			)
-# 			a[ind] = term_1 + term_2_3
-# 		else
-# 			term_1 = λ * exp(-μ * τ) * Polynomial(
-# 						 [a[(n - 1, l - q, m - 1, j - 1)] / j / factorial(q) for q in 0:min(l, n + l - j)]
-# 					 )(μ * τ)
-# 			term_2_3 = λ * sum(
-# 				sum(a[(n - 1, l - q, m, k)] * ξ[(q, j, m, k)] + a[(n - 1, l - q, m - 1, k)] * ζ[(q, j, m - 1, k)] for k in j:(n+l-q)) for q in 0:l
-# 			)
-# 			a[ind] = term_1 + term_2_3
-# 		end
-# 	end
-# end
+function fill_aux!(problem::Problem, n::Int, l::Int)
+	"""Fill the auxiliary tables up to the given n and l."""
+	aux = problem.register.aux
+	qstop, mstop = l, n
 
-function fill_a!(problem::Problem, ind::@NamedTuple{n::Int, l::Int, m::Int})
+	function loop_fill(q::Int, m::Int)
+		for j in 0:(n+l-q)
+			for r in 0:(q+j)
+				ind = (q = q, r = r, m = m, j = j)
+				foreach(tbl_sbl -> fill!(problem, Val(tbl_sbl), ind), [:ξ, :ζ, :Ξ, :Z])
+			end
+		end
+		extra = q == 0 ? 1 : 0
+		for j in 0:(n+l-q+extra)
+			for r in 0:(q+j+1)
+				ind = (q = q, r = r, m = m, j = j)
+				foreach(tbl_sbl -> fill!(problem, Val(tbl_sbl), ind), [:η, :θ])
+			end
+		end
+	end
+
+
+	for m in 0:mstop
+		for q in 0:qstop
+			loop_fill(q, m)
+		end
+	end
+
+
+
+end
+
+
+function fill_logic!(problem::Problem, ::Val{:a}, ind::MainInd)
 	μ = problem.μ
 	λ = problem.λ
 	τ = problem.τ
-	n, l, m = ind.n, ind.l, ind.m
-	a = problem.table.a
-	A = problem.table.A
-	ξ = problem.table.ξ
-	ζ = problem.table.ζ
+	n, l, m, j = ind.n, ind.l, ind.m, ind.j
+	a = problem.register.a
+	A = problem.register.A
+	ξ = problem.register.aux.ξ
+	ζ = problem.register.aux.ζ
 
 	if n == 0
-		for j in 0:(n+l)
-			a[(n = 0, l = l, m = 0, j = j)] = δ(j, 0)
-		end
+		a[ind] = float(δ(j, 0))
 	elseif l == 0
-		term_1 = λ * exp(-μ * m * τ) * sum(
-					 A[(n - 1, 0, m - 1, k)] * factorial(k) / (μ^(1 + k)) for k in 0:(n-1)
-				 )
-		term_2_3 = λ * sum(
-			(-a[(n - 1, 0, m, k)] + a[(n - 1, 0, m - 1, k)] * exp(-μ * τ)) * factorial(k) / (-μ)^(1 + k) for k in 0:(n-1)
-		)
-		a[(n = n, l = 0, m = m, j = 0)] = term_1 + term_2_3
-		for j in 1:n
-			term_1 = λ * exp(-μ * τ) * a[(n - 1, 0, m - 1, j - 1)] / j
+		if j == 0
+			term_1 = λ * exp(-μ * m * τ) * sum(
+						 A(n - 1, 0, m - 1, k) * factorial(k) / (μ^(1 + k)) for k in 0:(n-1)
+					 )
 			term_2_3 = λ * sum(
-				(-a[(n - 1, 0, m, k)] + a[(n - 1, 0, m - 1, k)] * exp(-μ * τ)) * factorial(k) / factorial(j) / (-μ)^(1 + k - j) for k in j:(n-1)
+				(-a(n - 1, 0, m, k) + a(n - 1, 0, m - 1, k) * exp(-μ * τ)) * factorial(k) / (-μ)^(1 + k) for k in 0:(n-1)
 			)
-			a[(n = n, l = 0, m = m, j = j)] = term_1 + term_2_3
+			a[ind] = term_1 + term_2_3
+		else
+			term_1 = λ * exp(-μ * τ) * a(n - 1, 0, m - 1, j - 1) / j
+			term_2_3 = λ * sum(
+				(-a(n - 1, 0, m, k) + a(n - 1, 0, m - 1, k) * exp(-μ * τ)) * factorial(k) / factorial(j) / (-μ)^(1 + k - j) for k in j:(n-1)
+			)
+			a[ind] = term_1 + term_2_3
 		end
 	else
-		term_1 = λ * exp(-μ * m * τ) * Polynomial(
-					 [1 / factorial(q) * sum(A[(n - 1, l - q, m - 1, k)] * factorial(k) / μ^(k + 1) for k in 0:(n+l-q)) for q in 0:l]
-				 )(μ * τ)
-		term_2_3 = λ * sum(
-			sum(a[(n - 1, l - q, m, k)] * ξ[(q, 0, m, k)] + a[(n - 1, l - q, m - 1, k)] * ζ[(q, 0, m - 1, k)] for k in 0:(n+l-q)) for q in 0:l
-		)
-		a[(n = n, l = l, m = m, j = 0)] = term_1 + term_2_3
-		for j in 1:(n+l)
-			term_1 = λ * exp(-μ * τ) * Polynomial(
-						 [a[(n - 1, l - q, m - 1, j - 1)] / j / factorial(q) for q in 0:min(l, n + l - j)]
+		if j == 0
+			term_1 = λ * exp(-μ * m * τ) * Polynomial(
+						 [1 / factorial(q) * sum(A(n - 1, l - q, m - 1, k) * factorial(k) / μ^(k + 1) for k in 0:(n+l-q-1)) for q in 0:l]
 					 )(μ * τ)
 			term_2_3 = λ * sum(
-				sum(a[(n - 1, l - q, m, k)] * ξ[(q, j, m, k)] + a[(n - 1, l - q, m - 1, k)] * ζ[(q, j, m - 1, k)] for k in j:(n+l-q)) for q in 0:l
+				sum(a(n - 1, l - q, m, k) * ξ(q, 0, m, k) + a(n - 1, l - q, m - 1, k) * ζ(q, 0, m - 1, k) for k in 0:(n+l-q-1)) for q in 0:l
 			)
-			a[(n = n, l = l, m = m, j = j)] = term_1 + term_2_3
+			a[ind] = term_1 + term_2_3
+		else
+			term_1 = λ * exp(-μ * τ) * Polynomial(
+						 [a(n - 1, l - q, m - 1, j - 1) / j / factorial(q) for q in 0:min(l, n + l - j)]
+					 )(μ * τ)
+			term_2_3 = λ * sum(
+				sum(a(n - 1, l - q, m, k) * ξ(q, j, m, k) + a(n - 1, l - q, m - 1, k) * ζ(q, j, m - 1, k) for k in j:(n+l-q-1)) for q in 0:l
+			)
+			a[ind] = term_1 + term_2_3
 		end
 	end
 end
 
 
-function fill_A!(problem::Problem, ind::@NamedTuple{n::Int, l::Int, m::Int})
+function fill_logic!(problem::Problem, ::Val{:A}, ind::MainInd)
 	μ = problem.μ
 	λ = problem.λ
 	τ = problem.τ
-	n, l, m = ind.n, ind.l, ind.m
-	a = problem.table.a
-	A = problem.table.A
-	Ξ = problem.table.Ξ
-	Z = problem.table.Z
-	η = problem.table.η
-	θ = problem.table.θ
+	n, l, m, j = ind.n, ind.l, ind.m, ind.j
+	a = problem.register.a
+	A = problem.register.A
+	Ξ = problem.register.aux.Ξ
+	Z = problem.register.aux.Z
+	η = problem.register.aux.η
+	θ = problem.register.aux.θ
 
 	if n == 0
-		for j in 0:(n+l)
-			A[(n = 0, l = l, m = 0, j = j)] = 0.0
-		end
+		A[ind] = 0.0
 	elseif l == 0
-		term_1 = -λ * sum(
-			A[(n - 1, 0, m - 1, k)] * factorial(k) / μ^(k + 1) for k in 0:(n-1)
-		)
-		term_2_3 = λ * exp(μ * m * τ) * sum(
-					   (a[(n - 1, 0, m, k)] - a[(n - 1, 0, m - 1, k)] * exp(-μ * τ)) * factorial(k) / (-μ)^(k + 1) for k in 0:(n-1)
-				   )
-		A[(n = n, l = 0, m = m, j = 0)] = term_1 + term_2_3
-		for j in 1:n
+		if j == 0
 			term_1 = -λ * sum(
-				A[(n - 1, 0, m - 1, k)] * factorial(k) / factorial(j) / μ^(k + 1 - j) for k in j:(n-1)
+				A(n - 1, 0, m - 1, k) * factorial(k) / μ^(k + 1) for k in 0:(n-1)
 			)
-			term_2_3 = λ / j * (A[(n - 1, 0, m, j - 1)] - A[(n - 1, 0, m - 1, j - 1)])
-			A[(n = n, l = 0, m = m, j = j)] = term_1 + term_2_3
+			term_2_3 = λ * exp(μ * m * τ) * sum(
+						   (a(n - 1, 0, m, k) - a(n - 1, 0, m - 1, k) * exp(-μ * τ)) * factorial(k) / (-μ)^(k + 1) for k in 0:(n-1)
+					   )
+			A[ind] = term_1 + term_2_3
+		else
+			term_1 = -λ * sum(
+				A(n - 1, 0, m - 1, k) * factorial(k) / factorial(j) / μ^(k + 1 - j) for k in j:(n-1)
+			)
+			term_2_3 = λ / j * (A(n - 1, 0, m, j - 1) - A(n - 1, 0, m - 1, j - 1))
+			A[ind] = term_1 + term_2_3
 		end
 	else
-		for j in 0:(n+l)
-			term_1 = -λ * Polynomial(
-				[1 / factorial(q) * sum(A[(n - 1, l - q, m - 1, k)] * factorial(k) / factorial(j) / μ^(1 + k - j) for k in j:(n+l-q)) for q in 0:l]
-			)(μ * τ)
-			term_2_3 = λ * sum(
-				sum(a[(n - 1, l - q, m, k)] * Ξ[(q, j, m, k)] + a[(n - 1, l - q, m - 1, k)] * Z[(q, j, m - 1, k)] for k in 0:(n+l-q)) for q in j:l
-			)
-			term_4_5 = λ * sum(
-				sum(A[(n - 1, l - q, m, k)] * η[(q, j, m, k)] + A[(n - 1, l - q, m - 1, k)] * θ[(q, j, m - 1, k)] for k in max(j - q - 1, 0):(n+l-q)) for q in 0:l
-			)
-			A[(n = n, l = l, m = m, j = j)] = term_1 + term_2_3 + term_4_5
-		end
+		term_1 = -λ * Polynomial(
+			[1 / factorial(q) * sum(A(n - 1, l - q, m - 1, k) * factorial(k) / factorial(j) / μ^(1 + k - j) for k in j:(n+l-q-1)) for q in 0:l]
+		)(μ * τ)
+		term_2_3 = λ * sum(
+			sum(a(n - 1, l - q, m, k) * Ξ(q, j, m, k) + a(n - 1, l - q, m - 1, k) * Z(q, j, m - 1, k) for k in 0:(n+l-q-1)) for q in j:l
+		)
+		term_4_5 = λ * sum(
+			sum(A(n - 1, l - q, m, k) * η(q, j, m, k) + A(n - 1, l - q, m - 1, k) * θ(q, j, m - 1, k) for k in max(j - q - 1, 0):(n+l-q-1)) for q in 0:l
+		)
+		A[ind] = term_1 + term_2_3 + term_4_5
 	end
 end
 
 
-function fill!(problem::Problem, ind::@NamedTuple{n::Int, l::Int})
-	max_n, max_l = ind.n, ind.l
-	table = problem.table
+function fill_main!(problem::Problem, max_n::Int, max_l::Int)
+	"""Fill the main tables up to the given max_n and max_l."""
+	register = problem.register
+	nstart, lstart = register.max_n + 1, register.max_l + 1
+	nstop, lstop = max_n, max_l
 
-	for n in (table.max_n+1):(max_n+1)
-		if n == 0
-			for l in (table.max_l+1):(max_l+1)
-				for j in 0:(n+l)
-					ind = (n = 0, l = l, m = 0, j = j)
-					table.a[ind] = δ(j, 0)
-					table.A[ind] = 0.0
-				end
-			end
-		else
-			for l in (table.max_l+1):(max_l+1)
-				for m in 0:n
-					for j in 0:(n+l)
-						for r in 0:j
-							ind = (q = 0, r = r, m = m, j = j)
-							fill_ξ!(problem, ind)
-							fill_ζ!(problem, ind)
-							fill_Ξ!(problem, ind)
-							fill_Z!(problem, ind)
-						end
-					end
-					for j in 0:(n+l+1)
-						for r in 0:(j+1)
-							ind = (q = 0, r = r, m = m, j = j)
-							fill_η!(problem, ind)
-							fill_θ!(problem, ind)
-						end
-					end
-					for q in 0:l
-						for r in 0:q
-							ind = (q = q, r = r, m = m, j = 0)
-							fill_ξ!(problem, ind)
-							fill_ζ!(problem, ind)
-							fill_Ξ!(problem, ind)
-							fill_Z!(problem, ind)
-						end
-						for r in 0:(q+1)
-							ind = (q = q, r = r, m = m, j = 0)
-							fill_η!(problem, ind)
-							fill_θ!(problem, ind)
-						end
-					end
-					for q in 1:l
-						for j in 1:(n+l-q)
-							for r in 0:(q+j)
-								ind = (q = q, r = r, m = m, j = j)
-								fill_ξ!(problem, ind)
-								fill_ζ!(problem, ind)
-								fill_Ξ!(problem, ind)
-								fill_Z!(problem, ind)
-							end
-						end
-						for j in 1:(n+l-q)
-							for r in 0:(q+j+1)
-								ind = (q = q, r = r, m = m, j = j)
-								fill_η!(problem, ind)
-								fill_θ!(problem, ind)
-							end
-						end
-					end
-					fill_a!(problem, (n = n, l = l, m = m))
-					fill_A!(problem, (n = n, l = l, m = m))
+	fill_aux!(problem, nstop, lstop)
+
+	function loop_fill(n::Int, l::Int)
+		# fill_aux!(problem, n, l)
+
+		for m in 0:n
+			for j in 0:(n+l)
+				ind = (n = n, l = l, m = m, j = j)
+				for tbl_sbl in [:a, :A]
+					fill!(problem, Val(tbl_sbl), ind)
 				end
 			end
 		end
 	end
 
-	table.max_n = max_n
-	table.max_l = max_l
+	if register.max_n < nstop || register.max_l < lstop
+
+		for n in 0:nstop
+			l_start = n < nstart ? lstart : 0
+			for l in l_start:lstop
+				loop_fill(n, l)
+			end
+		end
+
+		register.max_n = max(nstop, register.max_n)
+		register.max_l = max(lstop, register.max_l)
+
+	end
 end
 
 
@@ -447,18 +429,18 @@ end
 
 function (problem::Problem)(max_n::Int, max_l::Int)
 	"""Compute the P probability of the event at the given time."""
-	fill!(problem, (n = max_n, l = max_l))
+	fill_main!(problem, max_n, max_l)
 
 	function inner(observation_time)
 		term_1 = exp(-problem.λ * observation_time) * sum(
-			problem.table.a[(max_n, max_l, m, j)] *
+			problem.register.a(max_n, max_l, m, j) *
 			piecewise_monomial(problem, m, j)(observation_time)
 			for m in 0:max_n
 			for j in 0:(max_n+max_l)
 		)
 		term_2 =
 			exp(-(problem.μ + problem.λ) * observation_time) * sum(
-				problem.table.A[(max_n, max_l, m, j)] *
+				problem.register.A(max_n, max_l, m, j) *
 				piecewise_monomial(problem, m, j)(observation_time)
 				for m in 0:max_n
 				for j in 0:(max_n+max_l)
