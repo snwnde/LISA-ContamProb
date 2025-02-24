@@ -6,20 +6,84 @@ using Polynomials: Polynomials
 
 δ(i::Int, j::Int)::Int = i == j ? 1 : 0
 
+"""
+	horner(coeffs::AbstractVector, x::Number)
+
+Evaluate a polynomial at a given point x using Horner's method.
+"""
+function horner(coeffs::AbstractVector{T}, x::T) where T <: Number
+	result = zero(T)
+	for coeff in reverse(coeffs)
+		result = result * x + coeff
+	end
+	return result
+end
+
 function Polynomial(coeffs::AbstractVector)
-	"""Get a polynomial from its coefficients."""
 	if isempty(coeffs)
 		return Polynomials.Polynomial([0])
 	end
 	return Polynomials.Polynomial(coeffs)
 end
 
+function (p::Polynomials.Polynomial)(x::Number)
+	return horner(p.coeffs, x)
+end
+
+
+"""
+	Kahan summation algorithm
+"""
 function sum(gen::Union{Base.Generator, Base.Iterators.Flatten})
 	if isempty(gen)
 		return 0.0
 	end
-	return Base.sum(gen)
+	c = 0.0
+	sum = 0.0
+	for x in gen
+		y = x - c
+		t = sum + y
+		c = (t - sum) - y
+		sum = t
+	end
+	return sum
 end
+
+
+const STIRLING_THRESHOLD = 100
+const LOG_FACTORIALS = [log(Base.factorial(big(i))) for i in 0:STIRLING_THRESHOLD]
+
+function log_factorial(n::Int)
+	return LOG_FACTORIALS[n+1]
+end
+
+# Redefine factorial function to use Stirling's approximation for large arguments
+function factorial(n::Int)
+	if n <= STIRLING_THRESHOLD
+		# return Base.factorial(n)
+		return Float64(exp(log_factorial(n)))
+	else
+		return sqrt(2 * π * n) * (n / exp(1.0))^n
+	end
+end
+
+"""
+	binomial(n::Int, k::Int)
+
+Compute the binomial coefficient using the multiplicative formula.
+"""
+function binomial(n::Int, k::Int)
+	try
+		return Base.binomial(n, k)
+	catch e
+		if isa(e, OverflowError)
+			return Float64(exp(log_factorial(n) - log_factorial(k) - log_factorial(n - k)))
+		else
+			rethrow(e)
+		end
+	end
+end
+
 
 MainInd = @NamedTuple{n::Int, l::Int, m::Int, j::Int}
 AuxInd = @NamedTuple{q::Int, r::Int, m::Int, j::Int}
