@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from collections import UserDict
 
 import numpy as np
-from pyparsing import C
 
 from ..problem_setup import ContaminationProcess, PoissonProcess, SingletonPopulation
 from ..analytical import Case
@@ -80,19 +79,6 @@ class Table:
         self.Z = self.LVCoefficients()
         self.η = self.LVCoefficients()
         self.θ = self.LVCoefficients()
-        # Initialize the maximum indices
-        self.max_n = -1
-        self.max_l = -1
-
-    @property
-    def max_indice(self) -> Case:
-        """Get the maximum indice."""
-        return Case(self.max_n, self.max_l)
-
-    @max_indice.setter
-    def max_indice(self, value: tuple[int, int]):
-        """Set the maximum indice."""
-        self.max_n, self.max_l = value
 
 
 class LoopSolver:
@@ -474,7 +460,9 @@ class LoopSolver:
         def _fill(n: int, l: int):  # noqa: E741
             if n == 0:
                 for j in range(n + l + 1):
-                    self.table.a[(0, l, 0, j)] = kronecker_delta(j, 0)
+                    self.table.a[(0, l, 0, j)] = kronecker_delta(
+                        j, 0
+                    ) * kronecker_delta(l, 0)
                     self.table.A[(0, l, 0, j)] = 0
             else:
                 for m in range(n + 1):
@@ -493,16 +481,8 @@ class LoopSolver:
                     self.fill_in_A((n, l, m))
 
         for n in range(0, max_ind.n + 1):
-            l_start = (
-                self.table.max_indice.l + 1 if n < self.table.max_indice.l + 1 else 0
-            )
-            for l in range(l_start, max_ind.l + 1):  # noqa: E741
+            for l in range(0, max_ind.l + 1):  # noqa: E741
                 _fill(n, l)
-
-        self.table.max_indice = Case(
-            max(max_ind.n, self.table.max_indice.n),
-            max(max_ind.l, self.table.max_indice.l),
-        )
 
     def get_piecewise_monomial(self, m: int, j: int):
         def piecewise_monomial(t):

@@ -85,12 +85,10 @@ mutable struct Register
 	a::MainTable
 	A::MainTable
 	aux::AuxRegister
-	max_n::Int
-	max_l::Int
 
-	function Register(max_n::Int = -1, max_l::Int = -1, a = MainTable(), A = MainTable(),
+	function Register(a = MainTable(), A = MainTable(),
 		aux = AuxRegister())
-		return new(a, A, aux, max_n, max_l)
+		return new(a, A, aux)
 
 	end
 end
@@ -300,7 +298,7 @@ function fill_logic!(problem::Problem, ::Val{:a}, ind::MainInd)
 	ζ = problem.register.aux.ζ
 
 	if n == 0
-		a[ind] = float(δ(j, 0))
+		a[ind] = float(δ(m, 0) * δ(j, 0) * δ(l, 0))
 	elseif l == 0
 		if j == 0
 			term_1 = λ * exp(-μ * m * τ) * sum(
@@ -386,8 +384,6 @@ end
 
 function fill_main!(problem::Problem, max_n::Int, max_l::Int)
 	"""Fill the main tables up to the given max_n and max_l."""
-	register = problem.register
-	nstart, lstart = register.max_n + 1, register.max_l + 1
 	nstop, lstop = max_n, max_l
 
 	fill_aux!(problem, nstop, lstop)
@@ -405,19 +401,12 @@ function fill_main!(problem::Problem, max_n::Int, max_l::Int)
 		end
 	end
 
-	if register.max_n < nstop || register.max_l < lstop
-
-		for n in 0:nstop
-			l_start = n < nstart ? lstart : 0
-			for l in l_start:lstop
-				loop_fill(n, l)
-			end
+	for n in 0:nstop
+		for l in 0:lstop
+			loop_fill(n, l)
 		end
-
-		register.max_n = max(nstop, register.max_n)
-		register.max_l = max(lstop, register.max_l)
-
 	end
+
 end
 
 
