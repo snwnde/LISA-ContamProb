@@ -1,6 +1,7 @@
 module Template
 
 using Integrals
+using PythonCall
 
 export BaseProb, define_exp_prob_struct, define_uniform_prob_struct, mean, variance, k_weighted, avg_k
 
@@ -44,6 +45,10 @@ end
 
 function (prob::BaseProb)(t::Float64)
 	return sum([prob(k, t) for k in 1:prob.max_k])
+end
+
+function (prob::BaseProb)(t::PyArray{Float64, 1, true, true, Float64})
+	return [prob(t[i]) for i in eachindex(t)]
 end
 
 function k_weighted(prob::BaseProb, t::Float64)

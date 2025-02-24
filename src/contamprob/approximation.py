@@ -5,7 +5,16 @@ probability problem.
 
 import abc
 import pathlib
-from typing import TYPE_CHECKING, Protocol, TypeVar, Literal, TypedDict, Unpack, Generic
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Protocol,
+    TypeVar,
+    Literal,
+    TypedDict,
+    Unpack,
+    Generic,
+)
 import logging
 import numpy as np
 import scipy.stats  # type: ignore[import]
@@ -105,11 +114,11 @@ class _JuliaApprox(Generic[_CTMN_POP]):
     @abc.abstractmethod
     def _get_pdf_results(
         self, observation_time: float
-    ) -> tuple[float, float, float]: ...
+    ) -> tuple[float, float, float, Callable]: ...
 
     def __call__(self, observation_time: float):
         ctmn_rate = self.process.rate
-        pdf_mean, pdf_var, pdf_avg_k = self._get_pdf_results(observation_time)
+        pdf_mean, pdf_var, pdf_avg_k, _ = self._get_pdf_results(observation_time)
         log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}, pdf_avg_k: {pdf_avg_k}")
         gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
         n_estimate = observation_time * ctmn_rate / pdf_avg_k
@@ -140,7 +149,9 @@ class ExponentialDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]:
+    def _get_pdf_results(
+        self, observation_time: float
+    ) -> tuple[float, float, float, Callable]:
         ctmn_rate = float(self.process.rate)
         mean_ctmn = float(self.contamination.mean)
         obs_time = float(observation_time)
@@ -155,7 +166,7 @@ class ExponentialDistributionApprox(_JuliaApprox):
             avg_k = self.jl.avg_k(prob)
         else:
             raise NotImplementedError
-        return mean, variance, avg_k
+        return mean, variance, avg_k, prob
 
 
 class UniformDistributionApprox(_JuliaApprox):
@@ -171,7 +182,9 @@ class UniformDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_results(self, observation_time: float) -> tuple[float, float, float]:
+    def _get_pdf_results(
+        self, observation_time: float
+    ) -> tuple[float, float, float, Callable]:
         ctmn_rate = float(self.process.rate)
         max_ctmn = float(self.contamination.upper)
         obs_time = float(observation_time)
@@ -189,7 +202,7 @@ class UniformDistributionApprox(_JuliaApprox):
             avg_k = self.jl.avg_k(prob)
         else:
             raise NotImplementedError
-        return mean, variance, avg_k
+        return mean, variance, avg_k, prob
 
 
 class NormalApproximation:
@@ -205,3 +218,10 @@ class NormalApproximation:
         """Return the normal distribution approximation for the observation time."""
         mean, variance = self.ctmn_proc_approx(observation_time)
         return scipy.stats.norm(mean, np.sqrt(variance))
+
+    def get_ctmn_interval_pdf(self, observation_time: float):
+        """Return the contamination interval pdf for the observation time."""
+        if isinstance(self.ctmn_proc_approx, _JuliaApprox):
+            _, _, _, pdf = self.ctmn_proc_approx._get_pdf_results(observation_time)
+            return pdf
+        raise NotImplementedError("Only Julia approximations are supported.")
