@@ -121,7 +121,7 @@ class _JuliaApprox(Generic[_CTMN_POP]):
         pdf_mean, pdf_var, pdf_avg_k, _ = self._get_pdf_results(observation_time)
         log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}, pdf_avg_k: {pdf_avg_k}")
         gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
-        n_estimate = observation_time * ctmn_rate / pdf_avg_k
+        n_estimate = observation_time / (pdf_mean + gap_mean)
         log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
         frac_mean = pdf_mean / (pdf_mean + gap_mean)
         frac_var = (1 / n_estimate) * (
