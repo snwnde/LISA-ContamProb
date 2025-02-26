@@ -39,25 +39,40 @@ function define_uniform_prob_struct(name::Symbol)
 	end
 end
 
-function (prob::BaseProb)(k::Int, t::Float64)
-	return prob(Val(k), t)
+function (prob::BaseProb)(k::Int, T::Float64, tau::Float64)
+	return prob(Val(k), T, tau)
 end
 
-function (prob::BaseProb)(t::Float64)
-	return sum([prob(k, t) for k in 1:prob.max_k])
+function (prob::BaseProb)(k::Int, T::Float64)
+	try
+		return prob(Val(k), T)
+	catch e
+		if isa(e, MethodError)
+			domain = (0, T)
+			int = IntegralProblem((tau, _) -> prob(k, T, tau), domain)
+			sol = solve(int, HCubatureJL())
+			return sol[1]
+		else
+			rethrow(e)
+		end
+	end
 end
 
-function (prob::BaseProb)(t::PyArray{Float64, 1, true, true, Float64})
-	return [prob(t[i]) for i in eachindex(t)]
+function (prob::BaseProb)(T::Float64)
+	return sum([prob(k, T) for k in 1:prob.max_k])
 end
 
-function k_weighted(prob::BaseProb, t::Float64)
-	return sum([k * prob(k, t) for k in 1:prob.max_k])
+function (prob::BaseProb)(T::PyArray{Float64, 1, true, true, Float64})
+	return [prob(T[i]) for i in eachindex(T)]
+end
+
+function k_weighted(prob::BaseProb, T::Float64)
+	return sum([k * prob(k, T) for k in 1:prob.max_k])
 end
 
 function avg_k(prob::BaseProb, obs_time::Float64 = Inf)
 	domain = (0, obs_time)
-	int = IntegralProblem((t, _) -> k_weighted(prob, t), domain)
+	int = IntegralProblem((T, _) -> k_weighted(prob, T), domain)
 	sol = solve(int, HCubatureJL())
 	return sol[1]
 end

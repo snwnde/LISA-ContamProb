@@ -8,19 +8,19 @@ export ProbByHand, mean, variance, k_weighted
 
 @eval $(define_exp_prob_struct(:ProbByHand))
 
-# Make Prob an alias of ProbByHand 
+# Make Prob an alias of ProbByHand
 # since in this case we can compute all orders by hand
 const Prob = ProbByHand
 
-function (prob::ProbByHand)(t::Float64)
-	return prob.nu * exp(-prob.nu * t)
+function (prob::ProbByHand)(T::Float64)
+	return prob.nu * exp(-prob.nu * T)
 end
 
-function k_weighted(prob::ProbByHand, t::Float64)
+function k_weighted(prob::ProbByHand, T::Float64)
 	lambda = prob.lambda
 	nu = prob.nu
-	nu_t = prob.nu * t
-	return (lambda * nu_t + nu) * exp(-nu_t)
+	nu_T = prob.nu * T
+	return (lambda * nu_T + nu) * exp(-nu_T)
 end
 
 end # module
