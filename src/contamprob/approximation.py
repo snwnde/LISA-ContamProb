@@ -197,8 +197,8 @@ class UniformDistributionApprox(_JuliaApprox):
             # Either we provide max_k * max_ctmn here either we leave it to the julia code,
             # which will use the default value of Inf. The integration works fine
             # with Inf, but badly with obs_time.
-            mean = self.jl.mean(prob, max_k * max_ctmn)
-            variance = self.jl.variance(prob, max_k * max_ctmn)
+            mean = self.jl.mean(prob)#, max_k * max_ctmn)
+            variance = self.jl.variance(prob)#, max_k * max_ctmn)
             avg_k = self.jl.avg_k(prob)
         else:
             raise NotImplementedError

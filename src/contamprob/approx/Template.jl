@@ -80,7 +80,7 @@ end
 function mean(prob::BaseProb, obs_time::Float64 = Inf)
 	domain = (0, obs_time)
 	int = IntegralProblem((x, _) -> x * prob(x), domain)
-	sol = solve(int, HCubatureJL())
+	sol = solve(int, HCubatureJL(); abstol = 1e-6)
 	return sol[1]
 end
 

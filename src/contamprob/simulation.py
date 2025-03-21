@@ -2,7 +2,7 @@
 
 import bisect
 import pathlib
-from collections.abc import Sequence
+from collections.abc import Sequence, Mapping
 from typing import NamedTuple, Self, Protocol, cast
 import numpy as np
 import numpy.typing as npt
@@ -164,6 +164,7 @@ class _SimulationResult(Protocol):
     ctmn_intervals: None | _DisjointUnion
     ctmn_length: float
     contaminated_events: None | npt.NDArray[np.float_]
+    ctmn_int_categories: Mapping[int, int]
 
 
 class JuliaSimulationResult(_SimulationResult):
@@ -173,6 +174,7 @@ class JuliaSimulationResult(_SimulationResult):
     ctmn_intervals: None | JuliaDisjointUnion
     ctmn_length: float
     contaminated_events: None | npt.NDArray[np.float_]
+    ctmn_int_categories: dict[int, int]
 
 
 class SimulationResult(NamedTuple):
@@ -190,6 +192,8 @@ class SimulationResult(NamedTuple):
     """The total length of the contamination intervals."""
     contaminated_events: None | npt.NDArray[np.float_]
     """The events that are contaminated."""
+    ctmn_int_categories: dict[int, int]
+    """The number of contamination intervals per number of contamination arrivals."""
 
     @classmethod
     def from_julia(cls, result: JuliaSimulationResult) -> Self:
@@ -203,6 +207,7 @@ class SimulationResult(NamedTuple):
             else DisjointUnion.from_julia(result.ctmn_intervals),
             result.ctmn_length,
             result.contaminated_events,
+            result.ctmn_int_categories,
         )
 
 
@@ -213,12 +218,16 @@ class _Simulator:
         ctnm_proc: ContaminationProcess,
         event_proc: PoissonProcess,
         collect_events: bool = False,
+        collect_stats: bool = False,
+        k_cutoff: int | None = None,
         use_julia: bool = True,
     ) -> None:
         self.ctnm_proc = ctnm_proc
         self.event_proc = event_proc
         self.scenario = ctnm_proc.scenario
         self.collect_events = collect_events
+        self.collect_stats = collect_stats
+        self.k_cutoff = k_cutoff
         self.use_julia = use_julia
 
         if use_julia:
@@ -269,6 +278,7 @@ class Simulator(_Simulator):
             None,
             ctmn_length,
             None,
+            {},
         )
         return result
 
@@ -285,6 +295,8 @@ class Simulator(_Simulator):
             ctmn_periods,
             float(observation_time),
             self.scenario,
+            self.collect_stats,
+            self.k_cutoff,
         )
         return cast(JuliaSimulationResult, result)
 
@@ -308,12 +320,29 @@ class Simulator(_Simulator):
             ctmn_intervals_union.add_interval(
                 Interval.from_start(arrival, period).capped(T), reset_mode=reset_mode
             )
+        if self.k_cutoff:
+            for interval in ctmn_intervals_union.intervals:
+                num_arrivals = np.sum(
+                    (ctmn_arrivals >= interval.start) & (ctmn_arrivals < interval.stop)
+                )
+                if num_arrivals > self.k_cutoff:
+                    ctmn_intervals_union.intervals.remove(interval)
         ctmn_length = ctmn_intervals_union.length
         contaminated_events = (
             np.array([t for t in event_arrivals if ctmn_intervals_union.contains(t)])
             if self.collect_events
             else None
         )
+        # Classify the contamination intervals per number of contamination arrivals in the interval
+        ctmn_int_categories: dict[int, int] = {}
+        if self.collect_stats:
+            for interval in ctmn_intervals_union.intervals:
+                num_arrivals = np.sum(
+                    (ctmn_arrivals >= interval.start) & (ctmn_arrivals < interval.stop)
+                )
+                ctmn_int_categories[num_arrivals] = (
+                    ctmn_int_categories.get(num_arrivals, 0) + 1
+                )
 
         result = SimulationResult(
             event_arrivals,
@@ -322,5 +351,6 @@ class Simulator(_Simulator):
             ctmn_intervals_union,
             ctmn_length,
             contaminated_events,
+            ctmn_int_categories,
         )
         return result
