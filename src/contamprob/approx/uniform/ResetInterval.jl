@@ -29,7 +29,6 @@ function (prob::ProbByHand)(::Val{2}, T::Float64)
 	return term1 + term2
 end
 
-# This is wrong but for now it is not used
 function (prob::ProbByHand)(::Val{3}, T::Float64)
 	tau_max = prob.tau_max
 	lambda = prob.lambda
@@ -41,7 +40,7 @@ function (prob::ProbByHand)(::Val{3}, T::Float64)
 	term1 = factor * (T^4 / 24 - tau_max * T^3 / 3 + tau_max^2 * T^2 / 2) * case1
 	term2 = factor * ((2 * tau_max^4 - T^4 - (T - tau_max)^4) / 24 + tau_max / 3 * (T^3 + (T - tau_max)^3 - 2 * tau_max^3)
 					  + tau_max^2 / 2 * (3 * tau_max^2 - 2 * T^2 - (T - tau_max)^2) + 4 * tau_max^3 / 3 * (T - tau_max)) * case2
-	term3 = factor * (((T - tau_max)^4 - 16 * tau_max^4) / 24 - tau_max / 3 * ((T - tau_max)^3 + 8 * tau_max^3)
+	term3 = factor * (((T - tau_max)^4 - 16 * tau_max^4) / 24 - tau_max / 3 * ((T - tau_max)^3 - 8 * tau_max^3)
 					  + tau_max^2 * ((T - tau_max)^2 - 4 * tau_max^2) + 4 * tau_max^3 / 3 * (3 * tau_max - T)) * case3
 	return term1 + term2 + term3
 end
