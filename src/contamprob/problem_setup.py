@@ -12,7 +12,9 @@ from .approximation import (
     UniformDistributionApprox,
 )
 
-SCENARIO = Literal["constant_period", "merged_interval", "reset_interval"]
+SCENARIO = Literal[
+    "constant_period", "merged_interval", "reset_interval", "self_contamination"
+]
 CPP = TypeVar("CPP", bound="ContaminationPeriodPopulation")
 
 

@@ -5,7 +5,12 @@ from .problem_setup import (
     ExponentialDistribution,
     SingletonPopulation,
 )
-from .simulation import Simulator, SimulationResult
+from .simulation import (
+    Simulator,
+    SimulationResult,
+    SelfContaminationSimulationResult,
+    SelfContaminationSimulator,
+)
 from .approximation import NormalApproximation, ApproxConfig
 from .analytical import AnalyticalSolver
 from . import logger
@@ -17,6 +22,8 @@ __all__ = [
     "ContaminationProcess",
     "UniformDistribution",
     "ExponentialDistribution",
+    "SelfContaminationSimulationResult",
+    "SelfContaminationSimulator",
     "SingletonPopulation",
     "Simulator",
     "SimulationResult",

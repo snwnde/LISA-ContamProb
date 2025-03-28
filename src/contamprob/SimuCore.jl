@@ -132,4 +132,59 @@ function ctmn_simulate(
 		ctmn_length, contaminated_events, ctmn_int_categories)
 end
 
+
+struct SelfCtmnSimulationResult
+	event_arrivals::PyArray{Float64, 1, true, true, Float64}
+	ctmn_periods::PyArray{Float64, 1, true, true, Float64}
+	ctmn_hierarchy::Dict{Int, Dict{String, Vector{Int}}}
+	culprits::PyArray{Float64, 1, true, true, Float64}
+	victims::PyArray{Float64, 1, true, true, Float64}
+	# culprits::Vector{Float64}
+	# victims::Vector{Float64}
+end
+
+
+function self_ctmn_simulate(
+	event_arrivals::PyArray{Float64, 1, true, true, Float64},
+	ctmn_periods::PyArray{Float64, 1, true, true, Float64},
+)
+	event_arrivals_ = Array(event_arrivals)
+	ctmn_periods_ = Array(ctmn_periods)
+	ctmn_hierarchy = Dict{Int, Dict{String, Vector{Int}}}()
+
+	for n_skip in 1:(length(event_arrivals_)-1)
+		skip_diffs = @view(event_arrivals_[n_skip+1:end]) .- @view(event_arrivals_[1:end-n_skip])
+		mask = skip_diffs .<= @view ctmn_periods_[1:end-n_skip]
+
+		culprits = Vector{Int}()
+		for i in eachindex(mask)
+			if mask[i]
+				push!(culprits, i)
+			end
+		end
+
+		victims = culprits .+ n_skip
+		ctmn_hierarchy[n_skip] = Dict(
+			"culprits" => culprits,
+			"victims" => victims,
+		)
+	end
+
+	function get_idx(role::String)
+		idx_set = Set{Int}()
+		for n_skip in 1:(length(event_arrivals_)-1)
+			union!(idx_set, ctmn_hierarchy[n_skip][role])
+		end
+		return collect(idx_set)
+	end
+
+	victims_ = event_arrivals_[get_idx("victims")]
+	culprits_ = event_arrivals_[get_idx("culprits")]
+
+	victims_ = PyArray{Float64, 1, true, true, Float64}(victims_)
+	culprits_ = PyArray{Float64, 1, true, true, Float64}(culprits_)
+
+	return SelfCtmnSimulationResult(event_arrivals, ctmn_periods, ctmn_hierarchy, culprits_, victims_)
+end
+
 end # module
