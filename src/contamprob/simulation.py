@@ -158,39 +158,39 @@ class DisjointUnion(Union):
 
 # Simulation Result Classes
 class _SimulationResult(Protocol):
-    event_arrivals: None | npt.NDArray[np.float_]
-    ctmn_arrivals: npt.NDArray[np.float_]
-    ctmn_periods: npt.NDArray[np.float_]
+    event_arrivals: None | npt.NDArray[np.float64]
+    ctmn_arrivals: npt.NDArray[np.float64]
+    ctmn_periods: npt.NDArray[np.float64]
     ctmn_intervals: None | _DisjointUnion
     ctmn_length: float
-    contaminated_events: None | npt.NDArray[np.float_]
+    contaminated_events: None | npt.NDArray[np.float64]
     ctmn_int_categories: Mapping[int, int]
 
 
 class JuliaSimulationResult(_SimulationResult):
-    event_arrivals: None | npt.NDArray[np.float_]
-    ctmn_arrivals: npt.NDArray[np.float_]
-    ctmn_periods: npt.NDArray[np.float_]
+    event_arrivals: None | npt.NDArray[np.float64]
+    ctmn_arrivals: npt.NDArray[np.float64]
+    ctmn_periods: npt.NDArray[np.float64]
     ctmn_intervals: None | JuliaDisjointUnion
     ctmn_length: float
-    contaminated_events: None | npt.NDArray[np.float_]
+    contaminated_events: None | npt.NDArray[np.float64]
     ctmn_int_categories: dict[int, int]
 
 
 class SimulationResult(NamedTuple):
     """The result of a simulation."""
 
-    event_arrivals: None | npt.NDArray[np.float_]
+    event_arrivals: None | npt.NDArray[np.float64]
     """The arrival times of the events."""
-    ctmn_arrivals: npt.NDArray[np.float_]
+    ctmn_arrivals: npt.NDArray[np.float64]
     """The arrival times of the contamination periods."""
-    ctmn_periods: npt.NDArray[np.float_]
+    ctmn_periods: npt.NDArray[np.float64]
     """The durations of the contamination periods."""
     ctmn_intervals: DisjointUnion | None
     """The contamination intervals."""
     ctmn_length: float
     """The total length of the contamination intervals."""
-    contaminated_events: None | npt.NDArray[np.float_]
+    contaminated_events: None | npt.NDArray[np.float64]
     """The events that are contaminated."""
     ctmn_int_categories: dict[int, int]
     """The number of contamination intervals per number of contamination arrivals."""
@@ -367,13 +367,13 @@ class Simulator(_Simulator):
 class _SelfCtmnSimulationResult(Protocol):
     """The result of a simulation."""
 
-    event_arrivals: npt.NDArray[np.float_]
-    ctmn_periods: npt.NDArray[np.float_]
+    event_arrivals: npt.NDArray[np.float64]
+    ctmn_periods: npt.NDArray[np.float64]
     ctmn_hierarchy: Mapping[
         int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
     ]
-    culprits: npt.NDArray[np.float_]
-    victims: npt.NDArray[np.float_]
+    culprits: npt.NDArray[np.float64]
+    victims: npt.NDArray[np.float64]
 
 
 class JuliaSelfCtmnSimulationResult(_SelfCtmnSimulationResult): ...
@@ -382,17 +382,17 @@ class JuliaSelfCtmnSimulationResult(_SelfCtmnSimulationResult): ...
 class SelfContaminationSimulationResult(NamedTuple):
     """The result of a simulation."""
 
-    event_arrivals: npt.NDArray[np.float_]
+    event_arrivals: npt.NDArray[np.float64]
     """The arrival times of the events."""
-    ctmn_periods: npt.NDArray[np.float_]
+    ctmn_periods: npt.NDArray[np.float64]
     """The durations of the contamination periods."""
     ctmn_hierarchy: Mapping[
         int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
     ]
     """The hierarchy of contamination intervals."""
-    culprits: npt.NDArray[np.float_]
+    culprits: npt.NDArray[np.float64]
     """The event arrivals that are culprits."""
-    victims: npt.NDArray[np.float_]
+    victims: npt.NDArray[np.float64]
     """The event arrivals that are contaminated."""
 
 
