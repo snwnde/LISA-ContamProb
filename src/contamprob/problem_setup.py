@@ -13,7 +13,9 @@ from .approximation import (
 )
 
 SCENARIO = Literal[
-    "constant_period", "merged_interval", "reset_interval", "self_contamination"
+    "constant_period",
+    "merged_interval",
+    "reset_interval",
 ]
 CPP = TypeVar("CPP", bound="ContaminationPeriodPopulation")
 

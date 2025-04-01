@@ -402,8 +402,6 @@ class SelfContaminationSimulator(_Simulator):
         event_proc: ContaminationProcess,
         use_julia: bool = True,
     ) -> None:
-        # if event_proc.scenario != "self_contamination":
-        #     raise ValueError("The event process must be a self-contamination process.")
         super().__init__(
             ctnm_proc=event_proc,
             use_julia=use_julia,

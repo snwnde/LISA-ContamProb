@@ -2,9 +2,8 @@ module ResetInterval
 
 include("../Template.jl")
 using .Template
-import .Template: k_weighted
 using Integrals
-export ProbByHand, mean, variance, k_weighted
+export ProbByHand, mean, variance
 
 @eval $(define_uniform_prob_struct(:ProbByHand))
 @eval $(define_uniform_prob_struct(:Prob))

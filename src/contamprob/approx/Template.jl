@@ -3,7 +3,8 @@ module Template
 using Integrals
 using PythonCall
 
-export BaseProb, define_exp_prob_struct, define_uniform_prob_struct, mean, variance, k_weighted, avg_k
+export BaseProb, define_exp_prob_struct, define_uniform_prob_struct, mean, variance, self_ctmn_num_mean,
+	self_ctmn_num_variance, self_ctmn_covariance
 
 abstract type BaseProb end
 
@@ -58,6 +59,13 @@ function (prob::BaseProb)(k::Int, T::Float64)
 	end
 end
 
+function p_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((x, _) -> prob(k, x), domain)
+	sol = solve(int, HCubatureJL(); abstol = 1e-6)
+	return sol[1]
+end
+
 function (prob::BaseProb)(T::Float64)
 	return sum([prob(k, T) for k in 1:prob.max_k])
 end
@@ -66,14 +74,43 @@ function (prob::BaseProb)(T::PyArray{Float64, 1, true, true, Float64})
 	return [prob(T[i]) for i in eachindex(T)]
 end
 
-function k_weighted(prob::BaseProb, T::Float64)
-	return sum([k * prob(k, T) for k in 1:prob.max_k])
+# function k_weighted(prob::BaseProb, T::Float64)
+# 	return sum([k * prob(k, T) for k in 1:prob.max_k])
+# end
+
+function avg_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((T, _) -> k * prob(k, T), domain)
+	sol = solve(int, HCubatureJL())
+	return sol[1]
 end
 
-function avg_k(prob::BaseProb, obs_time::Float64 = Inf)
+# function avg_k(prob::BaseProb, obs_time::Float64 = Inf)
+# 	domain = (0, obs_time)
+# 	int = IntegralProblem((T, _) -> k_weighted(prob, T), domain)
+# 	sol = solve(int, HCubatureJL())
+# 	return sol[1]
+# end
+
+function var_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	avg_k_val = avg_k(prob, k, obs_time)
 	domain = (0, obs_time)
-	int = IntegralProblem((T, _) -> k_weighted(prob, T), domain)
+	int = IntegralProblem((T, _) -> (k - avg_k_val)^2 * prob(k, T), domain)
 	sol = solve(int, HCubatureJL())
+	return sol[1]
+end
+
+function M_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((x, _) -> x * prob(k, x), domain)
+	sol = solve(int, HCubatureJL(); abstol = 1e-6)
+	return sol[1]
+end
+
+function S_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((x, _) -> k * x * prob(k, x), domain)
+	sol = solve(int, HCubatureJL(); abstol = 1e-6)
 	return sol[1]
 end
 
@@ -90,6 +127,23 @@ function variance(prob::BaseProb, obs_time::Float64 = Inf)
 	int = IntegralProblem((x, _) -> (x - mean_val)^2 * prob(x), domain)
 	sol = solve(int, HCubatureJL())
 	return sol[1]
+end
+
+function self_ctmn_num_mean(prob::BaseProb, obs_time::Float64 = Inf)
+	return sum([avg_k(prob, k, obs_time) for k in 2:prob.max_k])
+end
+
+function self_ctmn_num_variance(prob::BaseProb, obs_time::Float64 = Inf)
+	return sum([
+		var_k(prob, k, obs_time) + (2 - p_k(prob, k, obs_time)) * avg_k(prob, k, obs_time)^2 for k in 2:prob.max_k
+	]) - self_ctmn_mean(prob, obs_time)^2
+end
+
+function self_ctmn_covariance(prob::BaseProb, obs_time::Float64 = Inf)
+	return sum([
+		S_k(prob, k, obs_time) - self_ctmn_num_mean(prob, obs_time) * M_k(prob, k, obs_time) -
+		avg_k(prob, k, obs_time) * mean(prob, obs_time) for k in 2:prob.max_k
+	]) + mean(prob, obs_time) * self_ctmn_num_mean(prob, obs_time)
 end
 
 end # module

@@ -8,6 +8,7 @@ import pathlib
 from typing import (
     TYPE_CHECKING,
     Callable,
+    NamedTuple,
     Protocol,
     TypeVar,
     Literal,
@@ -42,6 +43,9 @@ class ApproxConfig(TypedDict):
     max_k: int
     """The contamination number cut-off."""
 
+    self_ctmn: bool
+    """True if we are computing the self-contaminating case."""
+
 
 class CtmnProcApprox(Protocol):
     def __init__(
@@ -51,6 +55,38 @@ class CtmnProcApprox(Protocol):
         scenario: "SCENARIO",
         **config: Unpack[ApproxConfig],
     ): ...
+
+
+class PDFResults(NamedTuple):
+    """The results of the PDF calculation."""
+
+    mean: float
+    """The mean of the PDF."""
+
+    variance: float
+    """The variance of the PDF."""
+
+    pdf: Callable
+    """The PDF function."""
+
+
+class SelfCtmnPDFResults(NamedTuple):
+    """The results of the self-contaminating PDF calculation."""
+
+    num_mean: float
+    """The mean of the PDF of the numerator."""
+
+    num_variance: float
+    """The variance of the PDF of the numerator."""
+
+    covariance: float
+    """The covariance of the PDF of the numerator and denominator."""
+
+    interval_mean: float
+    """The mean of the PDF of the contamination interval length."""
+
+    interval_variance: float
+    """The variance of the PDF of the contamination interval length."""
 
 
 log = logging.getLogger(__name__)
@@ -70,6 +106,11 @@ class SingletonPopulationApprox:
         self.config = config
 
     def __call__(self, observation_time: float):
+        self_ctmn = self.config.get("self_ctmn", False)
+        if self_ctmn:
+            raise NotImplementedError(
+                "Self-contaminating case is not implemented for SingletonPopulationApprox"
+            )
         T = observation_time
         lam = self.process.rate
         tau = self.contamination.value
@@ -112,28 +153,79 @@ class _JuliaApprox(Generic[_CTMN_POP]):
         self.jl = getattr(getattr(jl.ApproxMain, self.MODULE_NAME), scenario_module)
 
     @abc.abstractmethod
-    def _get_pdf_results(
-        self, observation_time: float
-    ) -> tuple[float, float, float, Callable]: ...
+    def _get_pdf(self, observation_time: float): ...
 
-    def __call__(self, observation_time: float):
+    def _get_pdf_results(self, observation_time: float) -> PDFResults:
+        prob = self._get_pdf(observation_time)
+        mean = self.jl.mean(prob)
+        variance = self.jl.variance(prob)
+        return PDFResults(mean, variance, prob)
+
+    def _get_self_ctmn_pdf_results(self, observation_time: float) -> SelfCtmnPDFResults:
+        prob = self._get_pdf(observation_time)
+        num_mean = self.jl.self_ctmn_num_mean(prob)
+        num_variance = self.jl.self_ctmn_num_variance(prob)
+        covariance = self.jl.self_ctmn_covariance(prob)
+        interval_mean = self.jl.mean(prob)
+        interval_variance = self.jl.variance(prob)
+        return SelfCtmnPDFResults(
+            num_mean, num_variance, covariance, interval_mean, interval_variance
+        )
+
+    def __call_ctmn__(self, observation_time: float):
         ctmn_rate = self.process.rate
-        pdf_mean, pdf_var, pdf_avg_k, _ = self._get_pdf_results(observation_time)
-        log.info(f"pdf_mean: {pdf_mean}, pdf_var: {pdf_var}, pdf_avg_k: {pdf_avg_k}")
+        results = self._get_pdf_results(observation_time)
+        log.info(f"results.mean: {results.mean}, results.variance: {results.variance}")
         gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
-        n_estimate = observation_time / (pdf_mean + gap_mean)
+        n_estimate = observation_time / (results.mean + gap_mean)
         log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
-        frac_mean = pdf_mean / (pdf_mean + gap_mean)
+        frac_mean = results.mean / (results.mean + gap_mean)
         frac_var = (1 / n_estimate) * (
-            pdf_var / (pdf_mean + gap_mean) ** 2
-            + pdf_mean**2 / (pdf_mean + gap_mean) ** 4 * (pdf_var + gap_var)
-            - 2 * pdf_mean**2 * pdf_var / (pdf_mean + gap_mean) ** 3
+            results.variance / (results.mean + gap_mean) ** 2
+            + results.mean**2
+            / (results.mean + gap_mean) ** 4
+            * (results.variance + gap_var)
+            - 2 * results.mean * results.variance / (results.mean + gap_mean) ** 3
         )
         log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
         mean = frac_mean * observation_time
         variance = frac_var * observation_time**2
         log.info(f"mean: {mean}, variance: {variance}")
         return mean, variance
+
+    def __call_self_ctmn__(self, observation_time: float):
+        ctmn_rate = self.process.rate
+        results = self._get_self_ctmn_pdf_results(observation_time)
+        log.info(
+            "results.interval_mean: %s, results.num_mean: %s, "
+            "results.num_variance: %s, results.covariance: %s",
+            results.interval_mean,
+            results.num_mean,
+            results.num_variance,
+            results.covariance,
+        )
+        gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
+        n_estimate = observation_time / (results.interval_mean + gap_mean)
+        frac_mean = results.num_mean / (results.interval_mean + gap_mean)
+        frac_var = (1 / n_estimate) * (
+            results.num_variance / (results.interval_mean + gap_mean) ** 2
+            + results.num_mean**2
+            / (results.interval_mean + gap_mean) ** 4
+            * (results.interval_variance + gap_var)
+            - 2 * results.num_mean * results.covariance / (results.interval_mean + gap_mean) ** 3
+        )
+        log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
+        mean = frac_mean * observation_time
+        variance = frac_var * observation_time**2
+        log.info(f"mean: {mean}, variance: {variance}")
+        return mean, variance
+
+    def __call__(self, observation_time: float):
+        self_ctmn = self.config.get("self_ctmn", False)
+        if self_ctmn:
+            return self.__call_self_ctmn__(observation_time)
+        else:
+            return self.__call_ctmn__(observation_time)
 
 
 class ExponentialDistributionApprox(_JuliaApprox):
@@ -149,24 +241,19 @@ class ExponentialDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_results(
-        self, observation_time: float
-    ) -> tuple[float, float, float, Callable]:
+    def _get_pdf(self, observation_time: float):
         ctmn_rate = float(self.process.rate)
         mean_ctmn = float(self.contamination.mean)
         obs_time = float(observation_time)
         del obs_time
-        max_k = max_k = self.config.get("max_k", -1)
+        max_k = self.config.get("max_k", -1)
         if max_k < 0 and self.scenario != "reset_interval":
             raise ValueError(f"max_k must be set for {self.scenario} scenario")
         if self.config["prob_method"] == "by_hand":
             prob = self.jl.ProbByHand(ctmn_rate, mean_ctmn, max_k)
-            mean = self.jl.mean(prob)
-            variance = self.jl.variance(prob)
-            avg_k = self.jl.avg_k(prob)
-        else:
-            raise NotImplementedError
-        return mean, variance, avg_k, prob
+            return prob
+
+        raise NotImplementedError
 
 
 class UniformDistributionApprox(_JuliaApprox):
@@ -182,34 +269,28 @@ class UniformDistributionApprox(_JuliaApprox):
         super().__init__(process, contamination, scenario, **config)
         self.contamination = contamination
 
-    def _get_pdf_results(
-        self, observation_time: float
-    ) -> tuple[float, float, float, Callable]:
+    def _get_pdf(self, observation_time: float):
         ctmn_rate = float(self.process.rate)
         max_ctmn = float(self.contamination.upper)
         obs_time = float(observation_time)
         del obs_time
-        max_k = max_k = self.config.get("max_k", -1)
+        max_k = self.config.get("max_k", -1)
         if max_k < 0:
             raise ValueError(f"max_k must be set for {self.scenario} scenario")
         if self.config["prob_method"] == "by_hand":
             prob = self.jl.ProbByHand(ctmn_rate, max_ctmn, max_k)
-            # Either we provide max_k * max_ctmn here either we leave it to the julia code,
-            # which will use the default value of Inf. The integration works fine
-            # with Inf, but badly with obs_time.
-            mean = self.jl.mean(prob)#, max_k * max_ctmn)
-            variance = self.jl.variance(prob)#, max_k * max_ctmn)
-            avg_k = self.jl.avg_k(prob)
+            return prob
         else:
             raise NotImplementedError
-        return mean, variance, avg_k, prob
 
 
 class NormalApproximation:
     """A normal approximation to the contamination process."""
 
     def __init__(
-        self, ctmn_proc: "ContaminationProcess", **config: Unpack[ApproxConfig]
+        self,
+        ctmn_proc: "ContaminationProcess",
+        **config: Unpack[ApproxConfig],
     ):
         self.ctmn_proc = ctmn_proc
         self.ctmn_proc_approx = ctmn_proc.approx(**config)
@@ -222,6 +303,6 @@ class NormalApproximation:
     def get_ctmn_interval_pdf(self, observation_time: float):
         """Return the contamination interval pdf for the observation time."""
         if isinstance(self.ctmn_proc_approx, _JuliaApprox):
-            _, _, _, pdf = self.ctmn_proc_approx._get_pdf_results(observation_time)
-            return pdf
+            results = self.ctmn_proc_approx._get_pdf_results(observation_time)
+            return results.pdf
         raise NotImplementedError("Only Julia approximations are supported.")
