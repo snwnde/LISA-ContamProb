@@ -450,8 +450,13 @@ class SelfContaminationSimulator(_Simulator):
             )
             return idx
 
-        victims_ = event_arrivals[get_idx("victims")]
-        culprits_ = event_arrivals[get_idx("culprits")]
+        try:
+            victims_ = event_arrivals[get_idx("victims")]
+            culprits_ = event_arrivals[get_idx("culprits")]
+        except ValueError:
+            # No victims or culprits found
+            victims_ = np.array([])
+            culprits_ = np.array([])
         result = SelfContaminationSimulationResult(
             event_arrivals,
             ctmn_periods,

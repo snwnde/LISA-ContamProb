@@ -129,21 +129,56 @@ function variance(prob::BaseProb, obs_time::Float64 = Inf)
 	return sol[1]
 end
 
+
+function aux_mean_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((T, _) -> (k-1) * prob(k, T), domain)
+	sol = solve(int, HCubatureJL())
+	return sol[1]
+end
+
 function self_ctmn_num_mean(prob::BaseProb, obs_time::Float64 = Inf)
-	return sum([avg_k(prob, k, obs_time) for k in 2:prob.max_k])
+	return sum([aux_mean_k(prob, k, obs_time) for k in 2:prob.max_k])
+end
+
+function aux_var_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((T, _) -> (k-1-self_ctmn_num_mean(prob, obs_time))^2 * prob(k, T), domain)
+	sol = solve(int, HCubatureJL())
+	return sol[1]
+end
+
+function aux_cov_k(prob::BaseProb, k::Int, obs_time::Float64 = Inf)
+	domain = (0, obs_time)
+	int = IntegralProblem((T, _) -> (k-1-self_ctmn_num_mean(prob, obs_time))*(T - mean(prob, obs_time)) * prob(k, T), domain)
+	sol = solve(int, HCubatureJL())
+	return sol[1]
 end
 
 function self_ctmn_num_variance(prob::BaseProb, obs_time::Float64 = Inf)
-	return sum([
-		var_k(prob, k, obs_time) + (2 - p_k(prob, k, obs_time)) * avg_k(prob, k, obs_time)^2 for k in 2:prob.max_k
-	]) - self_ctmn_mean(prob, obs_time)^2
+	return sum([aux_var_k(prob, k, obs_time) for k in 2:prob.max_k])
 end
 
 function self_ctmn_covariance(prob::BaseProb, obs_time::Float64 = Inf)
-	return sum([
-		S_k(prob, k, obs_time) - self_ctmn_num_mean(prob, obs_time) * M_k(prob, k, obs_time) -
-		avg_k(prob, k, obs_time) * mean(prob, obs_time) for k in 2:prob.max_k
-	]) + mean(prob, obs_time) * self_ctmn_num_mean(prob, obs_time)
+	return sum([aux_cov_k(prob, k, obs_time) for k in 2:prob.max_k])
 end
+
+
+# function self_ctmn_num_mean(prob::BaseProb, obs_time::Float64 = Inf)
+# 	return sum([avg_k(prob, k, obs_time) for k in 2:prob.max_k])
+# end
+
+# function self_ctmn_num_variance(prob::BaseProb, obs_time::Float64 = Inf)
+# 	return sum([
+# 		var_k(prob, k, obs_time) + (2 - p_k(prob, k, obs_time)) * avg_k(prob, k, obs_time)^2 for k in 2:prob.max_k
+# 	]) - self_ctmn_num_mean(prob, obs_time)^2
+# end
+
+# function self_ctmn_covariance(prob::BaseProb, obs_time::Float64 = Inf)
+# 	return sum([
+# 		S_k(prob, k, obs_time) - self_ctmn_num_mean(prob, obs_time) * M_k(prob, k, obs_time) -
+# 		avg_k(prob, k, obs_time) * mean(prob, obs_time) for k in 2:prob.max_k
+# 	]) + mean(prob, obs_time) * self_ctmn_num_mean(prob, obs_time)
+# end
 
 end # module
