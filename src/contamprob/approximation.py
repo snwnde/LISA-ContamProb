@@ -157,8 +157,16 @@ class _JuliaApprox(Generic[_CTMN_POP]):
 
     def _get_pdf_results(self, observation_time: float) -> PDFResults:
         prob = self._get_pdf(observation_time)
-        mean = self.jl.mean(prob)
-        variance = self.jl.variance(prob)
+        # For numerical accuracy, we need to pass the integration upper bound
+        # to the mean and variance functions if contamination periods are
+        # drawn from a uniform distribution.
+        args = (
+            (self.config["max_k"] * self.contamination.upper,)
+            if hasattr(self.contamination, "upper")
+            else ()
+        )
+        mean = self.jl.mean(prob, *args)
+        variance = self.jl.variance(prob, *args)
         return PDFResults(mean, variance, prob)
 
     def _get_self_ctmn_pdf_results(self, observation_time: float) -> SelfCtmnPDFResults:
@@ -212,7 +220,10 @@ class _JuliaApprox(Generic[_CTMN_POP]):
             + results.num_mean**2
             / (results.interval_mean + gap_mean) ** 4
             * (results.interval_variance + gap_var)
-            - 2 * results.num_mean * results.covariance / (results.interval_mean + gap_mean) ** 3
+            - 2
+            * results.num_mean
+            * results.covariance
+            / (results.interval_mean + gap_mean) ** 3
         )
         log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
         mean = frac_mean * observation_time

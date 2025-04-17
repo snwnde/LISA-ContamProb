@@ -123,7 +123,7 @@ end
 
 function variance(prob::BaseProb, obs_time::Float64 = Inf)
 	domain = (0, obs_time)
-	mean_val = mean(prob)
+	mean_val = mean(prob, obs_time)
 	int = IntegralProblem((x, _) -> (x - mean_val)^2 * prob(x), domain)
 	sol = solve(int, HCubatureJL())
 	return sol[1]
