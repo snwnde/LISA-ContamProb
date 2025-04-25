@@ -15,6 +15,7 @@ from typing import (
     TypedDict,
     Unpack,
     Generic,
+    NotRequired,
 )
 import logging
 import numpy as np
@@ -40,7 +41,7 @@ class ApproxConfig(TypedDict):
     prob_method: Literal["by_hand", "recurrence"]
     """The probability calculation method."""
 
-    max_k: int
+    max_k: NotRequired[int]
     """The contamination number cut-off."""
 
     self_ctmn: bool
