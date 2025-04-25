@@ -14,7 +14,8 @@ del lovelyplots
 log = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(
-    description="Compare simulation and analytical approximation of contamination process."
+    description="Compare simulation and analytical "
+    "approximation of contamination process."
 )
 
 parser.add_argument(
@@ -30,10 +31,10 @@ parser.add_argument(
     help="Number of simulations.",
 )
 parser.add_argument(
-    "--k_cutoff",
+    "--max_k",
     type=int,
-    default=None,
-    help="Cutoff for the degree of analytical solution.",
+    default=-1,
+    help="Cutoff for the degree of analytical solution. Default -1 means no cutoff.",
 )
 parser.add_argument(
     "--event_rate",
@@ -70,14 +71,33 @@ parser.add_argument(
 )
 
 
+def _decide_len_unit(length: float):
+    day = 86400
+    hour = 3600
+    minute = 60
+    if length > day / day:
+        unit = "days"
+        convert = day / day
+    elif length > hour / day:
+        unit = "hours"
+        convert = day / hour
+    elif length > minute / day:
+        unit = "minutes"
+        convert = day / minute
+    else:
+        unit = "seconds"
+        convert = day
+    return unit, convert
+
+
 def _get_scenario(
     ctmn_scenario: Literal["constant", "merged", "reset"],
 ):
     if ctmn_scenario == "constant":
         return "constant_period"
-    elif ctmn_scenario == "exponential":
+    elif ctmn_scenario == "merged":
         return "merged_interval"
-    elif ctmn_scenario == "uniform":
+    elif ctmn_scenario == "reset":
         return "reset_interval"
     else:
         raise ValueError(
@@ -184,21 +204,31 @@ def compare(
         for stats in ctmn_int_categories:
             ctmn_stats |= stats
 
+    unit, convert = _decide_len_unit(np.max(ctmn_times))
     fig1, ax1 = plt.subplots()
     density, bins, patches = ax1.hist(
-        ctmn_times, bins="rice", alpha=1, label="Simulation", density=True
+        np.array(ctmn_times) * convert,
+        bins="rice",
+        alpha=1,
+        label="Simulation",
+        density=True,
     )
     del density, patches
     x_arr = np.linspace(np.min(bins), np.max(bins), 1000)
-    ax1.plot(x_arr, approx(observation_time).pdf(x_arr), label="Approximation")
-    ax1.set_xlabel("Contamination time (days)")
+    ax1.plot(
+        x_arr,
+        approx(observation_time).pdf(x_arr / convert) / convert,
+        label="Approximation",
+    )
+    ax1.set_xlabel(f"Contamination time ({unit})")
     ax1.set_ylabel("Probability density function")
     ax1.legend()
 
+    unit, convert = _decide_len_unit(np.mean(ctmn_interval_lengths))
+    fig2, ax2 = plt.subplots()
     try:
-        fig2, ax2 = plt.subplots()
         density, bins, patches = ax2.hist(
-            ctmn_interval_lengths,
+            np.array(ctmn_interval_lengths) * convert,
             bins="rice",
             alpha=1,
             label="Simulation",
@@ -211,12 +241,13 @@ def compare(
         try:
             ax2.plot(
                 bins,
-                approx.get_ctmn_interval_pdf(observation_time)(bins),
+                np.array(approx.get_ctmn_interval_pdf(observation_time)(bins / convert))
+                / convert,
                 label="Analytical",
             )
         except NotImplementedError:
             pass
-        ax2.set_xlabel("Contamination interval length (days)")
+        ax2.set_xlabel(f"Contamination interval length ({unit})")
         ax2.set_ylabel("Probability density function")
         ax2.legend()
         log.info(
@@ -250,9 +281,9 @@ if __name__ == "__main__":
     simulator, approx = get_simu_approx(
         ctmn_proc,
         event_proc,
-        k_cutoff=args.k_cutoff,
         prob_method="by_hand",
         self_ctmn=False,
+        max_k=args.max_k,
     )
 
     fig1, fig2 = compare(
