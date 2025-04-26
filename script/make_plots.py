@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--save_path",
     type=str,
-    default="../run/figures",
+    default="figures",
     help="Path to save the figures.",
 )
 
@@ -139,7 +139,7 @@ def _get_ctmn_proc(
     elif ctmn_population == "exponential":
         return contamprob.ContaminationProcess(
             contamprob.PoissonProcess(ctmn_rate),
-            contamprob.ExponentialDistribution(ctmn_param),
+            contamprob.ExponentialDistribution.from_scale(ctmn_param),
             scenario=scenario,
         )
     elif ctmn_population == "uniform":
@@ -224,9 +224,9 @@ def compare(
     ax1.set_ylabel("Probability density function")
     ax1.legend()
 
-    unit, convert = _decide_len_unit(np.mean(ctmn_interval_lengths))
     fig2, ax2 = plt.subplots()
     try:
+        unit, convert = _decide_len_unit(np.mean(ctmn_interval_lengths))
         density, bins, patches = ax2.hist(
             np.array(ctmn_interval_lengths) * convert,
             bins="rice",
