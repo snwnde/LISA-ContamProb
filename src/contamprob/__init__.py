@@ -8,8 +8,6 @@ from .problem_setup import (
 from .simulation import (
     Simulator,
     SimulationResult,
-    SelfContaminationSimulationResult,
-    SelfContaminationSimulator,
 )
 from .approximation import NormalApproximation, ApproxConfig
 from .analytical import AnalyticalSolver

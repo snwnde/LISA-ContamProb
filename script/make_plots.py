@@ -1,3 +1,4 @@
+from encodings.punycode import T
 import logging
 from typing import Unpack, Literal
 import argparse
@@ -56,12 +57,18 @@ parser.add_argument(
     "--ctmn_population_param",
     type=float,
     help="Contamination population parameter, "
-    "for exponential and uniform distributions. In seconds.",
+    "for exponential and uniform distributions. In seconds (not self-contamination) "
+    "or hours (self-contamination).",
 )
 parser.add_argument(
     "--ctmn_scenario",
     type=str,
     help="Contamination scenario, constant, merged or reset.",
+)
+parser.add_argument(
+    "--self_ctmn",
+    action="store_true",
+    help="Use self contamination.",
 )
 parser.add_argument(
     "--save_path",
@@ -127,9 +134,13 @@ def _get_ctmn_proc(
     ctmn_scenario: Literal["constant", "merged", "reset"],
     ctmn_rate: float,
     ctmn_population_param: float,
+    self_ctmn: bool,
 ):
     scenario = _get_scenario(ctmn_scenario)
-    ctmn_param = ctmn_population_param / 86400  # convert seconds to days
+    if not self_ctmn:
+        ctmn_param = ctmn_population_param / 86400  # convert seconds to days
+    else:
+        ctmn_param = ctmn_population_param / 24  # convert seconds to days
     if ctmn_population == "constant":
         return contamprob.ContaminationProcess(
             contamprob.PoissonProcess(ctmn_rate),
@@ -160,6 +171,16 @@ def get_simu_approx(
         ctmn_proc, event_proc, collect_stats=True, k_cutoff=k_cutoff
     )
     approx = contamprob.NormalApproximation(ctmn_proc, **approx_config)
+    return simulator, approx
+
+
+def get_self_ctmn_simu_approx(
+    ctmn_proc: contamprob.ContaminationProcess,
+    **approx_config: Unpack[contamprob.ApproxConfig],
+):
+    simulator = contamprob.Simulator(ctmn_proc, use_julia=False, with_self_ctmn=True)
+    approx = contamprob.NormalApproximation(ctmn_proc, **approx_config)
+    # debug_approx =
     return simulator, approx
 
 
@@ -263,6 +284,58 @@ def compare(
         return fig1, fig2
 
 
+def self_ctmn_compare(
+    simulator: contamprob.Simulator,
+    approx: contamprob.NormalApproximation,
+    observation_time: float,
+    n_simulations: int,
+):
+    def simulation_results():
+        for _ in range(n_simulations):
+            result = simulator(observation_time)
+            victims = len(result.self_ctmn_results.victims)
+            affected = len(
+                np.unique(
+                    np.concatenate(
+                        [
+                            result.self_ctmn_results.culprits,
+                            result.self_ctmn_results.victims,
+                        ]
+                    )
+                )
+            )
+            yield victims, affected
+
+    # Use generator expressions to compute statistics
+    num_victims, _ = map(list, zip(*simulation_results()))
+    log.info(
+        f"sample number of self-contaminated signals: {np.mean(num_victims)}, "
+        f"sample variance: {np.var(num_victims)}"
+    )
+    fig1, ax1 = plt.subplots()
+
+    bins = np.arange(np.min(num_victims) - 1, np.max(num_victims)) + 0.5
+
+    density, bins, patches = ax1.hist(
+        num_victims,
+        bins=bins,  # type: ignore[arg-type]
+        alpha=1,
+        label="Simulation",
+        density=True,
+    )
+
+    del density, patches
+
+    approx_dist = approx(observation_time)
+    x_arr = np.linspace(np.min(num_victims), np.max(num_victims), 1000)
+
+    ax1.plot(x_arr, approx_dist.pdf(x_arr), label="Approximation")
+    ax1.legend()
+    ax1.set_xlabel("Number of self-contaminated signals")
+    ax1.set_ylabel("Probability mass function")
+    return fig1
+
+
 if __name__ == "__main__":
     contamprob.logger.init_logger(
         "contamprob.approximation", level_console=logging.INFO
@@ -271,30 +344,55 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     log.info(f"Arguments: {args}")
+
+    save_path = pathlib.Path(args.save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    self_ctmn = True if args.self_ctmn else False
+
     event_proc = contamprob.PoissonProcess(args.event_rate)
     ctmn_proc = _get_ctmn_proc(
         args.ctmn_population,
         args.ctmn_scenario,
         args.ctmn_rate,
         args.ctmn_population_param,
-    )
-    simulator, approx = get_simu_approx(
-        ctmn_proc,
-        event_proc,
-        prob_method="by_hand",
-        self_ctmn=False,
-        max_k=args.max_k,
+        self_ctmn=self_ctmn,
     )
 
-    fig1, fig2 = compare(
-        simulator,
-        approx,
-        observation_time=args.observation_time,
-        n_simulations=args.n_simulations,
-    )
-    save_path = pathlib.Path(args.save_path)
-    save_path.mkdir(parents=True, exist_ok=True)
-    name1, name2 = _get_save_name(args.ctmn_population, args.ctmn_scenario)
-    fig1.savefig(save_path / f"{name1}.pdf")
-    if fig2:
-        fig2.savefig(save_path / f"{name2}.pdf")
+    if not self_ctmn:
+        simulator, approx = get_simu_approx(
+            ctmn_proc,
+            event_proc,
+            prob_method="by_hand",
+            self_ctmn=self_ctmn,
+            max_k=args.max_k,
+        )
+
+        fig1, fig2 = compare(
+            simulator,
+            approx,
+            observation_time=args.observation_time,
+            n_simulations=args.n_simulations,
+        )
+
+        name1, name2 = _get_save_name(args.ctmn_population, args.ctmn_scenario)
+        fig1.savefig(save_path / f"{name1}.pdf")
+        if fig2:
+            fig2.savefig(save_path / f"{name2}.pdf")
+
+    else:
+        simulator, approx = get_self_ctmn_simu_approx(
+            ctmn_proc,
+            prob_method="by_hand",
+            self_ctmn=self_ctmn,
+            max_k=args.max_k,
+        )
+
+        fig1 = self_ctmn_compare(
+            simulator,
+            approx,
+            observation_time=args.observation_time,
+            n_simulations=args.n_simulations,
+        )
+
+        fig1.savefig(save_path / "self_contamination.pdf")

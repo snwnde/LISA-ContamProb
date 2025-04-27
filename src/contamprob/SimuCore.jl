@@ -94,6 +94,17 @@ function contains_element(union::DisjointUnion, element::Float64)
 	return any(contains_element(interval, element) for interval in union.intervals)
 end
 
+
+
+struct SelfCtmnSimulationResult
+	ctmn_hierarchy::Dict{Int, Dict{String, Vector{Int}}}
+	culprits::PyArray{Float64, 1, true, true, Float64}
+	victims::PyArray{Float64, 1, true, true, Float64}
+	# culprits::Vector{Float64}
+	# victims::Vector{Float64}
+end
+
+
 struct SimulationResult
 	event_arrivals::Union{Nothing, PyArray{Float64, 1, true, true, Float64}}
 	ctmn_arrivals::PyArray{Float64, 1, true, true, Float64}
@@ -102,45 +113,7 @@ struct SimulationResult
 	ctmn_length::Float64
 	contaminated_events::Union{Nothing, PyArray{Float64, 1, true, true, Float64}}
 	ctmn_int_categories::Dict{Int, Int}
-end
-
-function ctmn_simulate(
-	event_arrivals::Union{Nothing, PyArray{Float64, 1, true, true, Float64}},
-	ctmn_arrivals::PyArray{Float64, 1, true, true, Float64},
-	ctmn_periods::PyArray{Float64, 1, true, true, Float64},
-	observation_time::Float64, scenario::String, collect_stats::Bool, k_cutoff::Union{Int, Nothing})
-	reset_mode = scenario == "reset_interval"
-	T = observation_time
-	ctmn_intervals_union = DisjointUnion(Vector{Interval}())
-	for (arrival, period) in zip(ctmn_arrivals, ctmn_periods)
-		ctmn_intervals_union = add_interval(ctmn_intervals_union, cap(Interval(arrival, arrival + period), T), reset_mode)
-	end
-	if k_cutoff !== nothing
-		ctmn_intervals_union = DisjointUnion([interval for interval in ctmn_intervals_union.intervals if sum((ctmn_arrivals .>= interval.start) .& (ctmn_arrivals .< interval.stop)) <= k_cutoff])
-	end
-	ctmn_length = measure(ctmn_intervals_union)
-	contaminated_events = event_arrivals !== nothing ? [t for t in event_arrivals if contains_element(ctmn_intervals_union, t)] : nothing
-	# Classify the contamination intervals per number of contamination arrivals in the interval
-	ctmn_int_categories = Dict{Int, Int}()
-	if collect_stats
-		for interval in ctmn_intervals_union.intervals
-			num_arrivals = sum((ctmn_arrivals .>= interval.start) .& (ctmn_arrivals .< interval.stop))
-			ctmn_int_categories[num_arrivals] = get(ctmn_int_categories, num_arrivals, 0) + 1
-		end
-	end
-	return SimulationResult(event_arrivals, ctmn_arrivals, ctmn_periods, ctmn_intervals_union,
-		ctmn_length, contaminated_events, ctmn_int_categories)
-end
-
-
-struct SelfCtmnSimulationResult
-	event_arrivals::PyArray{Float64, 1, true, true, Float64}
-	ctmn_periods::PyArray{Float64, 1, true, true, Float64}
-	ctmn_hierarchy::Dict{Int, Dict{String, Vector{Int}}}
-	culprits::PyArray{Float64, 1, true, true, Float64}
-	victims::PyArray{Float64, 1, true, true, Float64}
-	# culprits::Vector{Float64}
-	# victims::Vector{Float64}
+	self_ctmn_results::Union{Nothing, SelfCtmnSimulationResult}
 end
 
 
@@ -184,7 +157,48 @@ function self_ctmn_simulate(
 	victims_ = PyArray{Float64, 1, true, true, Float64}(victims_)
 	culprits_ = PyArray{Float64, 1, true, true, Float64}(culprits_)
 
-	return SelfCtmnSimulationResult(event_arrivals, ctmn_periods, ctmn_hierarchy, culprits_, victims_)
+	return SelfCtmnSimulationResult(ctmn_hierarchy, culprits_, victims_)
 end
+
+function ctmn_simulate(
+	event_arrivals::Union{Nothing, PyArray{Float64, 1, true, true, Float64}},
+	ctmn_arrivals::PyArray{Float64, 1, true, true, Float64},
+	ctmn_periods::PyArray{Float64, 1, true, true, Float64},
+	observation_time::Float64, scenario::String, collect_stats::Bool, k_cutoff::Union{Int, Nothing},
+	with_self_ctmn::Bool = false)
+	reset_mode = scenario == "reset_interval"
+	T = observation_time
+	ctmn_intervals_union = DisjointUnion(Vector{Interval}())
+	for (arrival, period) in zip(ctmn_arrivals, ctmn_periods)
+		ctmn_intervals_union =
+			add_interval(ctmn_intervals_union, cap(Interval(arrival, arrival + period), T), reset_mode)
+	end
+	if k_cutoff !== nothing
+		ctmn_intervals_union = DisjointUnion([
+			interval for interval in ctmn_intervals_union.intervals if
+			sum((ctmn_arrivals .>= interval.start) .& (ctmn_arrivals .< interval.stop)) <= k_cutoff
+		])
+	end
+	ctmn_length = measure(ctmn_intervals_union)
+	contaminated_events =
+		event_arrivals !== nothing ? [t for t in event_arrivals if contains_element(ctmn_intervals_union, t)] : nothing
+	# Classify the contamination intervals per number of contamination arrivals in the interval
+	ctmn_int_categories = Dict{Int, Int}()
+	if collect_stats
+		for interval in ctmn_intervals_union.intervals
+			num_arrivals = sum((ctmn_arrivals .>= interval.start) .& (ctmn_arrivals .< interval.stop))
+			ctmn_int_categories[num_arrivals] = get(ctmn_int_categories, num_arrivals, 0) + 1
+		end
+	end
+	if with_self_ctmn
+		self_ctmn_results = self_ctmn_simulate(ctmn_arrivals, ctmn_periods)
+	else
+		self_ctmn_results = nothing
+	end
+	return SimulationResult(event_arrivals, ctmn_arrivals, ctmn_periods, ctmn_intervals_union,
+		ctmn_length, contaminated_events, ctmn_int_categories,self_ctmn_results)
+end
+
+
 
 end # module

@@ -125,6 +125,57 @@ class SingletonPopulationApprox:
         return mean, var
 
 
+def _get_ctmn_frac(ctmn_rate: float, results: PDFResults, observation_time: float):
+    log.info(f"results.mean: {results.mean}, results.variance: {results.variance}")
+    gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
+    n_estimate = observation_time / (results.mean + gap_mean)
+    log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
+    frac_mean = results.mean / (results.mean + gap_mean)
+    frac_var = (1 / n_estimate) * (
+        results.variance / (results.mean + gap_mean) ** 2
+        + results.mean**2
+        / (results.mean + gap_mean) ** 4
+        * (results.variance + gap_var)
+        - 2 * results.mean * results.variance / (results.mean + gap_mean) ** 3
+    )
+    log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
+    mean = frac_mean * observation_time
+    variance = frac_var * observation_time**2
+    log.info(f"mean: {mean}, variance: {variance}")
+    return mean, variance
+
+
+def _get_self_ctmn_frac(
+    ctmn_rate: float, results: SelfCtmnPDFResults, observation_time: float
+):
+    log.info(
+        "results.interval_mean: %s, results.num_mean: %s, "
+        "results.num_variance: %s, results.covariance: %s",
+        results.interval_mean,
+        results.num_mean,
+        results.num_variance,
+        results.covariance,
+    )
+    gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
+    n_estimate = observation_time / (results.interval_mean + gap_mean)
+    frac_mean = results.num_mean / (results.interval_mean + gap_mean)
+    frac_var = (1 / n_estimate) * (
+        results.num_variance / (results.interval_mean + gap_mean) ** 2
+        + results.num_mean**2
+        / (results.interval_mean + gap_mean) ** 4
+        * (results.interval_variance + gap_var)
+        - 2
+        * results.num_mean
+        * results.covariance
+        / (results.interval_mean + gap_mean) ** 3
+    )
+    log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
+    mean = frac_mean * observation_time
+    variance = frac_var * observation_time**2
+    log.info(f"mean: {mean}, variance: {variance}")
+    return mean, variance
+
+
 class _JuliaApprox(Generic[_CTMN_POP]):
     MODULE_NAME: Literal["Exponential", "Uniform"]
 
@@ -184,22 +235,7 @@ class _JuliaApprox(Generic[_CTMN_POP]):
         ctmn_rate = self.process.rate
         results = self._get_pdf_results(observation_time)
         log.info(f"results.mean: {results.mean}, results.variance: {results.variance}")
-        gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
-        n_estimate = observation_time / (results.mean + gap_mean)
-        log.info(f"gap_mean: {gap_mean}, gap_var: {gap_var}, n_estimate: {n_estimate}")
-        frac_mean = results.mean / (results.mean + gap_mean)
-        frac_var = (1 / n_estimate) * (
-            results.variance / (results.mean + gap_mean) ** 2
-            + results.mean**2
-            / (results.mean + gap_mean) ** 4
-            * (results.variance + gap_var)
-            - 2 * results.mean * results.variance / (results.mean + gap_mean) ** 3
-        )
-        log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
-        mean = frac_mean * observation_time
-        variance = frac_var * observation_time**2
-        log.info(f"mean: {mean}, variance: {variance}")
-        return mean, variance
+        return _get_ctmn_frac(ctmn_rate, results, observation_time)
 
     def __call_self_ctmn__(self, observation_time: float):
         ctmn_rate = self.process.rate
@@ -212,24 +248,7 @@ class _JuliaApprox(Generic[_CTMN_POP]):
             results.num_variance,
             results.covariance,
         )
-        gap_mean, gap_var = 1 / ctmn_rate, 1 / ctmn_rate**2
-        n_estimate = observation_time / (results.interval_mean + gap_mean)
-        frac_mean = results.num_mean / (results.interval_mean + gap_mean)
-        frac_var = (1 / n_estimate) * (
-            results.num_variance / (results.interval_mean + gap_mean) ** 2
-            + results.num_mean**2
-            / (results.interval_mean + gap_mean) ** 4
-            * (results.interval_variance + gap_var)
-            - 2
-            * results.num_mean
-            * results.covariance
-            / (results.interval_mean + gap_mean) ** 3
-        )
-        log.info(f"frac_mean: {frac_mean}, frac_var: {frac_var}")
-        mean = frac_mean * observation_time
-        variance = frac_var * observation_time**2
-        log.info(f"mean: {mean}, variance: {variance}")
-        return mean, variance
+        return _get_self_ctmn_frac(ctmn_rate, results, observation_time)
 
     def __call__(self, observation_time: float):
         self_ctmn = self.config.get("self_ctmn", False)
@@ -295,6 +314,20 @@ class UniformDistributionApprox(_JuliaApprox):
             raise NotImplementedError
 
 
+class _DebugApprox:
+    def __init__(
+        self,
+        mean: float,
+        variance: float,
+    ):
+        self.mean = mean
+        self.variance = variance
+
+    def __call__(self, observation_time: float):
+        del observation_time
+        return self.mean, self.variance
+
+
 class NormalApproximation:
     """A normal approximation to the contamination process."""
 
@@ -317,3 +350,26 @@ class NormalApproximation:
             results = self.ctmn_proc_approx._get_pdf_results(observation_time)
             return results.pdf
         raise NotImplementedError("Only Julia approximations are supported.")
+
+
+class DebugNormalApproximation:
+    """A debug approximation to the contamination process.
+
+    This is a simple approximation that takes the mean and variance
+    of the distribution of the contamination intervals and computes
+    the normal approximation from them.
+    """
+
+    def __init__(
+        self,
+        ctmn_proc: "ContaminationProcess",
+        mean: float,
+        variance: float,
+    ):
+        self.ctmn_proc = ctmn_proc
+        self.mean = mean
+        self.variance = variance
+
+    def __call_ctmn__(self, observation_time: float):
+        del observation_time
+        return self.mean, self.variance

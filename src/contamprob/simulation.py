@@ -156,6 +156,27 @@ class DisjointUnion(Union):
         return cls([Interval.from_julia(interval) for interval in disj_union.intervals])
 
 
+# class _SelfCtmnSimulationResult(Protocol):
+#     ctmn_hierarchy: Mapping[
+#         int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
+#     ]
+#     culprits: npt.NDArray[np.float64]
+#     victims: npt.NDArray[np.float64]
+
+
+class SelfCtmnSimulationResult(NamedTuple):
+    """The result of a simulation."""
+
+    ctmn_hierarchy: Mapping[
+        int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
+    ]
+    """The hierarchy of contamination intervals."""
+    culprits: npt.NDArray[np.float64]
+    """The event arrivals that are culprits."""
+    victims: npt.NDArray[np.float64]
+    """The event arrivals that are contaminated."""
+
+
 # Simulation Result Classes
 class _SimulationResult(Protocol):
     event_arrivals: None | npt.NDArray[np.float64]
@@ -165,6 +186,7 @@ class _SimulationResult(Protocol):
     ctmn_length: float
     contaminated_events: None | npt.NDArray[np.float64]
     ctmn_int_categories: Mapping[int, int]
+    self_ctmn_results: None | SelfCtmnSimulationResult
 
 
 class JuliaSimulationResult(_SimulationResult):
@@ -175,6 +197,7 @@ class JuliaSimulationResult(_SimulationResult):
     ctmn_length: float
     contaminated_events: None | npt.NDArray[np.float64]
     ctmn_int_categories: dict[int, int]
+    self_ctmn_results: None | SelfCtmnSimulationResult
 
 
 class SimulationResult(NamedTuple):
@@ -194,6 +217,8 @@ class SimulationResult(NamedTuple):
     """The events that are contaminated."""
     ctmn_int_categories: dict[int, int]
     """The number of contamination intervals per number of contamination arrivals."""
+    self_ctmn_results: None | SelfCtmnSimulationResult
+    """The results of the self-contamination simulation."""
 
     @classmethod
     def from_julia(cls, result: JuliaSimulationResult) -> Self:
@@ -210,6 +235,7 @@ class SimulationResult(NamedTuple):
             result.ctmn_length,
             result.contaminated_events,
             result.ctmn_int_categories,
+            result.self_ctmn_results,
         )
 
 
@@ -223,6 +249,7 @@ class _Simulator:
         collect_stats: bool = False,
         k_cutoff: int | None = None,
         use_julia: bool = True,
+        with_self_ctmn: bool = False,
     ) -> None:
         self.ctnm_proc = ctnm_proc
         self.event_proc = event_proc
@@ -235,6 +262,7 @@ class _Simulator:
         self.collect_stats = collect_stats
         self.k_cutoff = k_cutoff
         self.use_julia = use_julia
+        self.with_self_ctmn = with_self_ctmn
 
         if use_julia:
             import juliacall  # type: ignore[import]
@@ -276,6 +304,11 @@ class Simulator(_Simulator):
                 "Collecting contaminated events is not supported."
             )
 
+        if self.with_self_ctmn:
+            raise NotImplementedError(
+                "Self-contamination is not implemented for the constant period scenario yet."
+            )
+
         separation = np.diff(ctmn_arrivals, append=T)
         separation[separation > ctmn_period] = ctmn_period
         ctmn_length = np.sum(separation)
@@ -287,6 +320,7 @@ class Simulator(_Simulator):
             ctmn_length,
             None,
             {},
+            None,
         )
         return result
 
@@ -305,6 +339,7 @@ class Simulator(_Simulator):
             self.scenario,
             self.collect_stats,
             self.k_cutoff,
+            self.with_self_ctmn,
         )
         return cast(JuliaSimulationResult, result)
 
@@ -352,116 +387,67 @@ class Simulator(_Simulator):
                     ctmn_int_categories.get(num_arrivals, 0) + 1
                 )
 
-        result = SimulationResult(
-            event_arrivals,
-            ctmn_arrivals,
-            ctmn_periods,
-            ctmn_intervals_union,
-            ctmn_length,
-            contaminated_events,
-            ctmn_int_categories,
-        )
-        return result
-
-
-class _SelfCtmnSimulationResult(Protocol):
-    """The result of a simulation."""
-
-    event_arrivals: npt.NDArray[np.float64]
-    ctmn_periods: npt.NDArray[np.float64]
-    ctmn_hierarchy: Mapping[
-        int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
-    ]
-    culprits: npt.NDArray[np.float64]
-    victims: npt.NDArray[np.float64]
-
-
-class JuliaSelfCtmnSimulationResult(_SelfCtmnSimulationResult): ...
-
-
-class SelfContaminationSimulationResult(NamedTuple):
-    """The result of a simulation."""
-
-    event_arrivals: npt.NDArray[np.float64]
-    """The arrival times of the events."""
-    ctmn_periods: npt.NDArray[np.float64]
-    """The durations of the contamination periods."""
-    ctmn_hierarchy: Mapping[
-        int, Mapping[Literal["culprits", "victims"], npt.NDArray[np.int_]]
-    ]
-    """The hierarchy of contamination intervals."""
-    culprits: npt.NDArray[np.float64]
-    """The event arrivals that are culprits."""
-    victims: npt.NDArray[np.float64]
-    """The event arrivals that are contaminated."""
-
-
-class SelfContaminationSimulator(_Simulator):
-    def __init__(
-        self,
-        event_proc: ContaminationProcess,
-        use_julia: bool = True,
-    ) -> None:
-        super().__init__(
-            ctnm_proc=event_proc,
-            use_julia=use_julia,
-        )
-
-    def __call_julia__(
-        self, observation_time: float, seed: None | int | np.random.Generator = None
-    ):
-        _, event_arrivals, ctmn_periods = self._generate_data(observation_time, seed)
-
-        result = self.jl.SimuCore.self_ctmn_simulate(
-            event_arrivals,
-            ctmn_periods,
-        )
-        return cast(JuliaSelfCtmnSimulationResult, result)
-
-    def __call__(
-        self, observation_time: float, seed: None | int | np.random.Generator = None
-    ):
-        if self.use_julia:
-            return self.__call_julia__(observation_time, seed)
-
-        _, event_arrivals, ctmn_periods = self._generate_data(observation_time, seed)
-        ctmn_hierarchy: dict[
-            int, dict[Literal["culprits", "victims"], npt.NDArray[np.int_]]
-        ] = {}
-        for n_skip in range(1, len(event_arrivals)):
-            skip_diffs = event_arrivals[n_skip:] - event_arrivals[:-n_skip]
-            mask = skip_diffs <= ctmn_periods[:-n_skip]
-            # Indices of the culprit and victim events
-            culprits = np.where(mask)[0]
-            victims = n_skip + culprits
-            ctmn_hierarchy[n_skip] = {
-                "culprits": culprits,
-                "victims": victims,
-            }
-
-        def get_idx(role: Literal["culprits", "victims"]):
-            idx = np.unique(
-                np.concatenate(
-                    [
-                        ctmn_hierarchy[n_skip][role]
-                        for n_skip in range(1, len(event_arrivals))
-                    ]
-                )
+        if not self.with_self_ctmn:
+            result = SimulationResult(
+                event_arrivals,
+                ctmn_arrivals,
+                ctmn_periods,
+                ctmn_intervals_union,
+                ctmn_length,
+                contaminated_events,
+                ctmn_int_categories,
+                None,
             )
-            return idx
 
-        try:
-            victims_ = event_arrivals[get_idx("victims")]
-            culprits_ = event_arrivals[get_idx("culprits")]
-        except ValueError:
-            # No victims or culprits found
-            victims_ = np.array([])
-            culprits_ = np.array([])
-        result = SelfContaminationSimulationResult(
-            event_arrivals,
-            ctmn_periods,
-            ctmn_hierarchy,
-            culprits_,
-            victims_,
-        )
+        else:
+            ctmn_hierarchy: dict[
+                int, dict[Literal["culprits", "victims"], npt.NDArray[np.int_]]
+            ] = {}
+            for n_skip in range(1, len(ctmn_arrivals)):
+                skip_diffs = ctmn_arrivals[n_skip:] - ctmn_arrivals[:-n_skip]
+                mask = skip_diffs <= ctmn_periods[:-n_skip]
+                # Indices of the culprit and victim events
+                culprits = np.where(mask)[0]
+                victims = n_skip + culprits
+                ctmn_hierarchy[n_skip] = {
+                    "culprits": culprits,
+                    "victims": victims,
+                }
+
+            def get_idx(role: Literal["culprits", "victims"]):
+                idx = np.unique(
+                    np.concatenate(
+                        [
+                            ctmn_hierarchy[n_skip][role]
+                            for n_skip in range(1, len(ctmn_arrivals))
+                        ]
+                    )
+                )
+                return idx
+
+            try:
+                victims_ = ctmn_arrivals[get_idx("victims")]
+                culprits_ = ctmn_arrivals[get_idx("culprits")]
+            except ValueError:
+                # No victims or culprits found
+                victims_ = np.array([])
+                culprits_ = np.array([])
+
+            self_ctmn_results = SelfCtmnSimulationResult(
+                ctmn_hierarchy,
+                culprits_,
+                victims_,
+            )
+
+            result = SimulationResult(
+                event_arrivals,
+                ctmn_arrivals,
+                ctmn_periods,
+                ctmn_intervals_union,
+                ctmn_length,
+                contaminated_events,
+                ctmn_int_categories,
+                self_ctmn_results,
+            )
+
         return result
