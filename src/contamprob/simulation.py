@@ -243,7 +243,7 @@ class SimulationResult(NamedTuple):
 class _Simulator:
     def __init__(
         self,
-        ctnm_proc: ContaminationProcess,
+        ctmn_proc: ContaminationProcess,
         event_proc: PoissonProcess | None = None,
         collect_events: bool = False,
         collect_stats: bool = False,
@@ -251,9 +251,9 @@ class _Simulator:
         use_julia: bool = True,
         with_self_ctmn: bool = False,
     ) -> None:
-        self.ctnm_proc = ctnm_proc
+        self.ctmn_proc = ctmn_proc
         self.event_proc = event_proc
-        self.scenario = ctnm_proc.scenario
+        self.scenario = ctmn_proc.scenario
         self.collect_events = collect_events
         if event_proc is None and collect_events:
             raise ValueError(
@@ -281,8 +281,8 @@ class _Simulator:
             if self.event_proc and self.collect_events
             else None
         )
-        ctmn_arrivals = self.ctnm_proc.process(observation_time, rngs[1])
-        ctmn_periods = self.ctnm_proc.contamination(len(ctmn_arrivals), rngs[2])
+        ctmn_arrivals = self.ctmn_proc.process(observation_time, rngs[1])
+        ctmn_periods = self.ctmn_proc.contamination(len(ctmn_arrivals), rngs[2])
         return event_arrivals, ctmn_arrivals, ctmn_periods
 
 

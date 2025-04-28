@@ -66,7 +66,7 @@ class PDFResults(NamedTuple):
     variance: float
     """The variance of the PDF."""
 
-    pdf: Callable
+    pdf: Callable | None = None
     """The PDF function."""
 
 
@@ -234,20 +234,11 @@ class _JuliaApprox(Generic[_CTMN_POP]):
     def __call_ctmn__(self, observation_time: float):
         ctmn_rate = self.process.rate
         results = self._get_pdf_results(observation_time)
-        log.info(f"results.mean: {results.mean}, results.variance: {results.variance}")
         return _get_ctmn_frac(ctmn_rate, results, observation_time)
 
     def __call_self_ctmn__(self, observation_time: float):
         ctmn_rate = self.process.rate
         results = self._get_self_ctmn_pdf_results(observation_time)
-        log.info(
-            "results.interval_mean: %s, results.num_mean: %s, "
-            "results.num_variance: %s, results.covariance: %s",
-            results.interval_mean,
-            results.num_mean,
-            results.num_variance,
-            results.covariance,
-        )
         return _get_self_ctmn_frac(ctmn_rate, results, observation_time)
 
     def __call__(self, observation_time: float):
@@ -317,15 +308,29 @@ class UniformDistributionApprox(_JuliaApprox):
 class _DebugApprox:
     def __init__(
         self,
-        mean: float,
-        variance: float,
+        ctmn_rate: float,
+        results: PDFResults | SelfCtmnPDFResults,
+        self_ctmn: bool,
     ):
-        self.mean = mean
-        self.variance = variance
+        self.ctmn_rate = ctmn_rate
+        self.self_ctmn = self_ctmn
+        if self.self_ctmn:
+            assert isinstance(results, SelfCtmnPDFResults), (
+                "Self contamination results must be of type SelfCtmnPDFResults"
+            )
+            self.results_self_ctmn = results
+        else:
+            assert isinstance(results, PDFResults), (
+                "Contamination results must be of type PDFResults"
+            )
+            self.results = results
 
     def __call__(self, observation_time: float):
-        del observation_time
-        return self.mean, self.variance
+        if self.self_ctmn:
+            return _get_self_ctmn_frac(
+                self.ctmn_rate, self.results_self_ctmn, observation_time
+            )
+        return _get_ctmn_frac(self.ctmn_rate, self.results, observation_time)
 
 
 class NormalApproximation:
@@ -352,24 +357,12 @@ class NormalApproximation:
         raise NotImplementedError("Only Julia approximations are supported.")
 
 
-class DebugNormalApproximation:
-    """A debug approximation to the contamination process.
-
-    This is a simple approximation that takes the mean and variance
-    of the distribution of the contamination intervals and computes
-    the normal approximation from them.
-    """
-
+class DebugNormalApproximation(NormalApproximation):
     def __init__(
         self,
         ctmn_proc: "ContaminationProcess",
-        mean: float,
-        variance: float,
+        results: PDFResults | SelfCtmnPDFResults,
+        self_ctmn: bool,
     ):
         self.ctmn_proc = ctmn_proc
-        self.mean = mean
-        self.variance = variance
-
-    def __call_ctmn__(self, observation_time: float):
-        del observation_time
-        return self.mean, self.variance
+        self.ctmn_proc_approx = _DebugApprox(ctmn_proc.process.rate, results, self_ctmn)

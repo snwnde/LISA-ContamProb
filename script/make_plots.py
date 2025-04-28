@@ -304,14 +304,51 @@ def self_ctmn_compare(
                     )
                 )
             )
-            yield victims, affected
+
+            def get_empirical():
+                for interval in result.ctmn_intervals.intervals:
+                    num_arrivals = np.sum(
+                        (result.ctmn_arrivals >= interval.start)
+                        & (result.ctmn_arrivals < interval.stop)
+                    )
+                    num_ctmn = num_arrivals - 1
+                    len_T = interval.stop - interval.start
+                    yield num_ctmn, len_T
+
+            pairs = list(get_empirical())
+
+            yield victims, affected, pairs
 
     # Use generator expressions to compute statistics
-    num_victims, _ = map(list, zip(*simulation_results()))
+    num_victims, _, list_of_pairs = map(list, zip(*simulation_results()))
+    flat_pairs = [item for sublist in list_of_pairs for item in sublist]
+    num_array = np.array([pair[0] for pair in flat_pairs])
+    len_array = np.array([pair[1] for pair in flat_pairs])
     log.info(
-        f"sample number of self-contaminated signals: {np.mean(num_victims)}, "
-        f"sample variance: {np.var(num_victims)}"
+        f"sample mean: {np.mean(num_victims)}, sample variance: {np.var(num_victims)}"
     )
+    cov = np.cov(num_array, len_array)
+
+    sample_results = contamprob.approximation.SelfCtmnPDFResults(
+        np.mean(num_array),
+        cov[0][0],
+        cov[0][1],
+        np.mean(len_array),
+        cov[1][1],
+    )
+
+    log.info(
+        f"sample num_mean: {sample_results.num_mean}, "
+        f"sample num_var: {sample_results.num_variance}, "
+        f"sample len_mean: {sample_results.interval_mean}, "
+        f"sample len_var: {sample_results.interval_variance}, "
+        f"sample len_num_cov: {sample_results.covariance}"
+    )
+
+    debug_approx = contamprob.DebugNormalApproximation(
+        simulator.ctmn_proc, sample_results, self_ctmn=True
+    )
+
     fig1, ax1 = plt.subplots()
 
     bins = np.arange(np.min(num_victims) - 1, np.max(num_victims)) + 0.5
@@ -327,9 +364,16 @@ def self_ctmn_compare(
     del density, patches
 
     approx_dist = approx(observation_time)
+    debug_approx_dist = debug_approx(observation_time)
     x_arr = np.linspace(np.min(num_victims), np.max(num_victims), 1000)
 
-    ax1.plot(x_arr, approx_dist.pdf(x_arr), label="Approximation")
+    ax1.plot(x_arr, approx_dist.pdf(x_arr), label=fr"Approximation ($k\leqslant{args.max_k}$)")
+    ax1.plot(
+        x_arr,
+        debug_approx_dist.pdf(x_arr),
+        label="Approximation",
+        linestyle="--",
+    )
     ax1.legend()
     ax1.set_xlabel("Number of self-contaminated signals")
     ax1.set_ylabel("Probability mass function")
