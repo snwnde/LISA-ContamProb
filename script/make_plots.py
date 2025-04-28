@@ -71,6 +71,11 @@ parser.add_argument(
     help="Use self contamination.",
 )
 parser.add_argument(
+    "--debug_approx",
+    action="store_true",
+    help="Plot debug approximation.",
+)
+parser.add_argument(
     "--save_path",
     type=str,
     default="figures",
@@ -180,7 +185,6 @@ def get_self_ctmn_simu_approx(
 ):
     simulator = contamprob.Simulator(ctmn_proc, use_julia=False, with_self_ctmn=True)
     approx = contamprob.NormalApproximation(ctmn_proc, **approx_config)
-    # debug_approx =
     return simulator, approx
 
 
@@ -225,6 +229,11 @@ def compare(
         for stats in ctmn_int_categories:
             ctmn_stats |= stats
 
+    sample_results = contamprob.approximation.PDFResults(
+        np.mean(ctmn_interval_lengths),
+        np.var(ctmn_interval_lengths),
+    )
+
     unit, convert = _decide_len_unit(np.max(ctmn_times))
     fig1, ax1 = plt.subplots()
     density, bins, patches = ax1.hist(
@@ -236,14 +245,31 @@ def compare(
     )
     del density, patches
     x_arr = np.linspace(np.min(bins), np.max(bins), 1000)
+
+    label_prefix = "Approximation"
+    label_suffix = f" ($k\leqslant{args.max_k}$)" if args.max_k > 0 else ""
+
     ax1.plot(
         x_arr,
         approx(observation_time).pdf(x_arr / convert) / convert,
-        label="Approximation",
+        label=label_prefix + label_suffix,
     )
+
+    if args.debug_approx:
+        debug_approx = contamprob.DebugNormalApproximation(
+            simulator.ctmn_proc, sample_results, self_ctmn=False
+        )
+        debug_approx_dist = debug_approx(observation_time)
+        ax1.plot(
+            x_arr,
+            debug_approx_dist.pdf(x_arr / convert) / convert,
+            label="Approximation",
+            linestyle="--",
+        )
+
     ax1.set_xlabel(f"Contamination time ({unit})")
     ax1.set_ylabel("Probability density function")
-    ax1.legend()
+    ax1.legend(loc="upper right")
 
     fig2, ax2 = plt.subplots()
     try:
@@ -259,15 +285,17 @@ def compare(
         return fig1, None
     else:
         del density, patches
+
         try:
             ax2.plot(
                 bins,
                 np.array(approx.get_ctmn_interval_pdf(observation_time)(bins / convert))
                 / convert,
-                label="Analytical",
+                label="Analytical" + label_suffix,
             )
         except NotImplementedError:
             pass
+
         ax2.set_xlabel(f"Contamination interval length ({unit})")
         ax2.set_ylabel("Probability density function")
         ax2.legend()
@@ -278,7 +306,7 @@ def compare(
             f"ctmn times sample mean: {np.mean(ctmn_times)}, sample variance: {np.var(ctmn_times)}"
         )
         log.info(
-            f"ctmn interval length sample mean: {np.mean(ctmn_interval_lengths)}, sample variance: {np.var(ctmn_interval_lengths)}"
+            f"ctmn interval length sample mean: {sample_results.mean}, sample variance: {sample_results.variance}"
         )
         log.info(f"ctmn interval nums per ctmn arrivals {ctmn_stats}")
         return fig1, fig2
@@ -345,10 +373,6 @@ def self_ctmn_compare(
         f"sample len_num_cov: {sample_results.covariance}"
     )
 
-    debug_approx = contamprob.DebugNormalApproximation(
-        simulator.ctmn_proc, sample_results, self_ctmn=True
-    )
-
     fig1, ax1 = plt.subplots()
 
     bins = np.arange(np.min(num_victims) - 1, np.max(num_victims)) + 0.5
@@ -364,16 +388,27 @@ def self_ctmn_compare(
     del density, patches
 
     approx_dist = approx(observation_time)
-    debug_approx_dist = debug_approx(observation_time)
+
     x_arr = np.linspace(np.min(num_victims), np.max(num_victims), 1000)
 
-    ax1.plot(x_arr, approx_dist.pdf(x_arr), label=fr"Approximation ($k\leqslant{args.max_k}$)")
     ax1.plot(
         x_arr,
-        debug_approx_dist.pdf(x_arr),
-        label="Approximation",
-        linestyle="--",
+        approx_dist.pdf(x_arr),
+        label=rf"Approximation ($k\leqslant{args.max_k}$)",
     )
+
+    if args.debug_approx:
+        debug_approx = contamprob.DebugNormalApproximation(
+            simulator.ctmn_proc, sample_results, self_ctmn=True
+        )
+        debug_approx_dist = debug_approx(observation_time)
+        ax1.plot(
+            x_arr,
+            debug_approx_dist.pdf(x_arr),
+            label="Approximation",
+            linestyle="--",
+        )
+
     ax1.legend()
     ax1.set_xlabel("Number of self-contaminated signals")
     ax1.set_ylabel("Probability mass function")
