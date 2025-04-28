@@ -150,7 +150,7 @@ def _get_ctmn_proc(
         return contamprob.ContaminationProcess(
             contamprob.PoissonProcess(ctmn_rate),
             contamprob.SingletonPopulation(ctmn_param),
-            scenario="constant_period",
+            scenario=scenario,
         )
     elif ctmn_population == "exponential":
         return contamprob.ContaminationProcess(
@@ -474,4 +474,4 @@ if __name__ == "__main__":
             n_simulations=args.n_simulations,
         )
 
-        fig1.savefig(save_path / "self_contamination.pdf")
+        fig1.savefig(save_path / f"self_contamination_{args.ctmn_population}.pdf")
