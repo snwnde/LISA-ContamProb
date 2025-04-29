@@ -247,7 +247,7 @@ def compare(
     x_arr = np.linspace(np.min(bins), np.max(bins), 1000)
 
     label_prefix = "Approximation"
-    label_suffix = fr" ($k\leqslant{args.max_k}$)" if args.max_k > 0 else ""
+    label_suffix = rf" ($k\leqslant{args.max_k}$)" if args.max_k > 0 else ""
 
     ax1.plot(
         x_arr,
@@ -473,4 +473,12 @@ if __name__ == "__main__":
             n_simulations=args.n_simulations,
         )
 
-        fig1.savefig(save_path / f"self_contamination_{args.ctmn_population}.pdf")
+        fig1.savefig(
+            save_path
+            / (
+                f"self_contamination_{args.ctmn_population}"
+                + f"_obs_{args.observation_time}"
+                + f"_rate_{args.ctmn_rate}"
+                + f"_param_{args.ctmn_population_param}.pdf"
+            )
+        )
