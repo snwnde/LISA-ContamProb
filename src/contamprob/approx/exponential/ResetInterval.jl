@@ -15,6 +15,10 @@ function (prob::ProbByHand)(T::Float64)
 	return prob.nu * exp(-prob.nu * T)
 end
 
+function (prob::ProbByHand)(k::Int, T::Float64)
+	return (prob.lambda * T)^(k - 1) * prob.nu / factorial(k - 1) * exp(-(prob.lambda + prob.nu) * T)
+end
+
 # function k_weighted(prob::ProbByHand, T::Float64)
 # 	lambda = prob.lambda
 # 	nu = prob.nu

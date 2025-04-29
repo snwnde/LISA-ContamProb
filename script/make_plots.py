@@ -247,7 +247,7 @@ def compare(
     x_arr = np.linspace(np.min(bins), np.max(bins), 1000)
 
     label_prefix = "Approximation"
-    label_suffix = f" ($k\leqslant{args.max_k}$)" if args.max_k > 0 else ""
+    label_suffix = fr" ($k\leqslant{args.max_k}$)" if args.max_k > 0 else ""
 
     ax1.plot(
         x_arr,
@@ -387,10 +387,9 @@ def self_ctmn_compare(
 
     del density, patches
 
-    approx_dist = approx(observation_time)
-
     x_arr = np.linspace(np.min(num_victims), np.max(num_victims), 1000)
 
+    approx_dist = approx(observation_time)
     ax1.plot(
         x_arr,
         approx_dist.pdf(x_arr),
