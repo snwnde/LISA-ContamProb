@@ -226,7 +226,9 @@ if __name__ == "__main__":
     vec_sf_eval = meshgrid_vectorize(sf_eval)
 
     rates = np.linspace(0.1, args.x_lim, args.x_length)
-    params = np.linspace(100, args.y_lim, args.y_length) / 86400  # convert seconds to days
+    params = (
+        np.linspace(100, args.y_lim, args.y_length) / 86400
+    )  # convert seconds to days
     sf_vals = vec_sf_eval(rates, params)
 
     levels = np.linspace(np.min(sf_vals), np.max(sf_vals), 100)
@@ -245,6 +247,9 @@ if __name__ == "__main__":
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
 
     name = (
-        f"contour_{args.ctmn_population}_{args.ctmn_scenario}_{args.critical_value}.pdf"
+        f"contour_{args.ctmn_population}_{args.ctmn_scenario}"
+        + f"_{args.critical_value}"
+        + f"_{args.x_lim}_{args.y_lim}"
+        + ".pdf"
     )
     fig.savefig(save_path / name, bbox_inches="tight")
