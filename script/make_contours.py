@@ -5,6 +5,7 @@ import pathlib
 import matplotlib.pyplot as plt
 import lovelyplots  # type: ignore[import]
 import numpy as np
+import joblib  # type: ignore[import]
 import contamprob  # type: ignore[import]
 
 plt.style.use(["paper", "colors5", "use_tex"])
@@ -168,9 +169,17 @@ def meshgrid_vectorize(func):
         # Create a meshgrid
         x_grid, y_grid = np.meshgrid(x, y, indexing="xy")
 
-        # Apply the function element-wise
-        vectorized_func = np.vectorize(func)
-        return vectorized_func(x_grid, y_grid)
+        # Flatten the meshgrid for parallel processing
+        x_flat = x_grid.ravel()
+        y_flat = y_grid.ravel()
+
+        # Apply the function in parallel
+        results = joblib.Parallel(n_jobs=-1)(
+            joblib.delayed(func)(x_val, y_val) for x_val, y_val in zip(x_flat, y_flat)
+        )
+
+        # Reshape the results back to the original grid shape
+        return np.array(results).reshape(x_grid.shape)
 
     return wrapper
 

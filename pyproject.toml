@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "LISA Contamination Probability"
-version = "0.0.0"                                              # Just a placeholder
+version = "0.0.0"                                                # Just a placeholder
 description = "Probability of signal contamination in LISA data"
 authors = ["Sen-wen Deng <deng@apc.in2p3.fr>"]
 readme = "README.md"
@@ -11,6 +11,7 @@ python = "^3.11"
 juliacall = "^0.9"
 numpy = "^1.25"
 scipy = "^1.14"
+joblib = "^1.4"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.9.0"
