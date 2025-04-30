@@ -1,0 +1,221 @@
+import logging
+from typing import Unpack, Literal
+import argparse
+import pathlib
+import matplotlib.pyplot as plt
+import lovelyplots  # type: ignore[import]
+import numpy as np
+import contamprob  # type: ignore[import]
+
+plt.style.use(["paper", "colors5", "use_tex"])
+del lovelyplots
+
+
+log = logging.getLogger(__name__)
+
+parser = argparse.ArgumentParser(
+    description="Compare simulation and analytical "
+    "approximation of contamination process."
+)
+
+
+parser = argparse.ArgumentParser(
+    description="Compare simulation and analytical "
+    "approximation of contamination process."
+)
+parser.add_argument(
+    "--observation_time",
+    type=float,
+    default=365,
+    help="Observation time in days.",
+)
+parser.add_argument(
+    "--max_k",
+    type=int,
+    default=-1,
+    help="Cutoff for the degree of analytical solution. Default -1 means no cutoff.",
+)
+parser.add_argument(
+    "--ctmn_population",
+    type=str,
+    help="Contamination population, constant, exponential or uniform.",
+)
+parser.add_argument(
+    "--ctmn_scenario",
+    type=str,
+    help="Contamination scenario, constant, merged or reset.",
+)
+parser.add_argument(
+    "--critical_value",
+    type=float,
+    help="Critical value for the contaminations.",
+)
+parser.add_argument(
+    "--save_path",
+    type=str,
+    default="figures",
+    help="Path to save the figures.",
+)
+
+
+def _get_scenario(
+    ctmn_scenario: Literal["constant", "merged", "reset"],
+):
+    if ctmn_scenario == "constant":
+        return "constant_period"
+    elif ctmn_scenario == "merged":
+        return "merged_interval"
+    elif ctmn_scenario == "reset":
+        return "reset_interval"
+    else:
+        raise ValueError(
+            f"Invalid contamination scenario: {ctmn_scenario}. "
+            "Must be one of: constant, merged, reset."
+        )
+
+
+def _get_ctmn_proc(
+    ctmn_population: Literal["constant", "exponential", "uniform"],
+    ctmn_scenario: Literal["constant", "merged", "reset"],
+    ctmn_rate: float,
+    ctmn_population_param: float,
+):
+    scenario = _get_scenario(ctmn_scenario)
+    ctmn_param = ctmn_population_param
+    if ctmn_population == "constant":
+        return contamprob.ContaminationProcess(
+            contamprob.PoissonProcess(ctmn_rate),
+            contamprob.SingletonPopulation(ctmn_param),
+            scenario=scenario,
+        )
+    elif ctmn_population == "exponential":
+        return contamprob.ContaminationProcess(
+            contamprob.PoissonProcess(ctmn_rate),
+            contamprob.ExponentialDistribution.from_scale(ctmn_param),
+            scenario=scenario,
+        )
+    elif ctmn_population == "uniform":
+        return contamprob.ContaminationProcess(
+            contamprob.PoissonProcess(ctmn_rate),
+            contamprob.UniformDistribution(ctmn_param),
+            scenario=scenario,
+        )
+
+
+def _decide_len_unit(length: float):
+    day = 86400
+    hour = 3600
+    minute = 60
+    if length > day / day:
+        unit = "days"
+        convert = day / day
+    elif length > hour / day:
+        unit = "hours"
+        convert = day / hour
+    elif length > minute / day:
+        unit = "minutes"
+        convert = day / minute
+    else:
+        unit = "seconds"
+        convert = day
+    return unit, convert
+
+
+def _get_y_label(
+    ctmn_population: Literal["constant", "exponential", "uniform"],
+):
+    if ctmn_population == "constant":
+        return r"$\tau$"
+    elif ctmn_population == "exponential":
+        return r"$\tau_\text{mean}$"
+    elif ctmn_population == "uniform":
+        return r"$\tau_\text{max}$"
+    else:
+        raise ValueError(
+            f"Invalid contamination population: {ctmn_population}. "
+            "Must be one of: constant, exponential, uniform."
+        )
+
+
+class SurvivalFunctionEval:
+    def __init__(
+        self,
+        critical_value: float,
+        observation_time: float,
+        **kwargs: Unpack[contamprob.ApproxConfig],
+    ):
+        self.critical_value = critical_value
+        self.observation_time = observation_time
+        self.kwargs = kwargs
+
+    def __call__(self, ctmn_rate: float, ctmn_period: float) -> float:
+        ctmn_proc = _get_ctmn_proc(
+            ctmn_population=args.ctmn_population,
+            ctmn_scenario=args.ctmn_scenario,
+            ctmn_rate=ctmn_rate,
+            ctmn_population_param=ctmn_period,
+        )
+        approx = contamprob.NormalApproximation(ctmn_proc, **self.kwargs)
+        return approx(self.observation_time).sf(self.critical_value)
+
+
+def meshgrid_vectorize(func):
+    def wrapper(x, y):
+        # Ensure inputs are numpy arrays
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
+
+        # Create a meshgrid
+        x_grid, y_grid = np.meshgrid(x, y, indexing="xy")
+
+        # Apply the function element-wise
+        vectorized_func = np.vectorize(func)
+        return vectorized_func(x_grid, y_grid)
+
+    return wrapper
+
+
+if __name__ == "__main__":
+    contamprob.logger.init_logger(
+        "contamprob.approximation", level_console=logging.INFO
+    )
+    contamprob.logger.init_logger(__name__, level_console=logging.INFO)
+
+    args = parser.parse_args()
+    log.info(f"Arguments: {args}")
+
+    save_path = pathlib.Path(args.save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    sf_eval = SurvivalFunctionEval(
+        critical_value=args.critical_value,
+        observation_time=args.observation_time,
+        max_k=args.max_k,
+        self_ctmn=False,
+        prob_method="by_hand",
+    )
+    vec_sf_eval = meshgrid_vectorize(sf_eval)
+
+    rates = np.linspace(0.1, 30, 500)
+    params = np.linspace(100, 3_000, 500) / 86400  # convert seconds to days
+    sf_vals = vec_sf_eval(rates, params)
+
+    levels = np.linspace(np.min(sf_vals), np.max(sf_vals), 100)
+
+    y_unit, y_convert = _decide_len_unit(np.max(params))
+    fig, ax = plt.subplots()
+    contour = ax.contourf(
+        rates, params * y_convert, sf_vals, levels=levels, cmap="viridis"
+    )
+    fig.colorbar(
+        contour,
+        label=rf"Probability of contamination time $\geqslant$ {args.critical_value} days",
+    )
+
+    ax.set_xlabel("Contamination Rate" + " (per day)")
+    ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
+
+    name = (
+        f"contour_{args.ctmn_population}_{args.ctmn_scenario}_{args.critical_value}.pdf"
+    )
+    fig.savefig(save_path / name, bbox_inches="tight")
