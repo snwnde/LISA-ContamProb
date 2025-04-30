@@ -52,6 +52,16 @@ parser.add_argument(
     help="Critical value for the contaminations.",
 )
 parser.add_argument(
+    "--x_lim",
+    type=float,
+    default=4,
+)
+parser.add_argument(
+    "--y_lim",
+    type=float,
+    default=9_000,
+)
+parser.add_argument(
     "--x_length",
     type=int,
     default=500,
@@ -215,8 +225,8 @@ if __name__ == "__main__":
     )
     vec_sf_eval = meshgrid_vectorize(sf_eval)
 
-    rates = np.linspace(0.1, 30, args.x_length)
-    params = np.linspace(100, 3_000, args.y_length) / 86400  # convert seconds to days
+    rates = np.linspace(0.1, args.x_lim, args.x_length)
+    params = np.linspace(100, args.y_lim, args.y_length) / 86400  # convert seconds to days
     sf_vals = vec_sf_eval(rates, params)
 
     levels = np.linspace(np.min(sf_vals), np.max(sf_vals), 100)
