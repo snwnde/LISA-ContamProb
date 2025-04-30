@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "LISA Contamination Probability"
+name = "contamprob"
 version = "0.0.0"                                                # Just a placeholder
 description = "Probability of signal contamination in LISA data"
 authors = ["Sen-wen Deng <deng@apc.in2p3.fr>"]
