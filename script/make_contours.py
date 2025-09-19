@@ -1,3 +1,4 @@
+import ast
 import logging
 from typing import Unpack, Literal
 import argparse
@@ -8,7 +9,15 @@ import numpy as np
 import joblib  # type: ignore[import]
 import contamprob  # type: ignore[import]
 
-plt.style.use(["paper", "colors5", "use_tex"])
+
+def set_plt_style(
+    lovelyplot_style: list[str] = ["paper", "colors5", "use_tex"], rcParams: dict = {}
+):
+    """Set the plotting style for matplotlib."""
+    plt.style.use(lovelyplot_style)
+    plt.rcParams.update(rcParams)
+
+
 del lovelyplots
 
 
@@ -76,6 +85,23 @@ parser.add_argument(
     type=str,
     default="figures",
     help="Path to save the figures.",
+)
+parser.add_argument(
+    "--plt_style",
+    type=str,
+    default="['paper', 'colors5', 'use_tex']",
+    help="Lovelyplot style to use.",
+)
+parser.add_argument(
+    "--plt_rcparams",
+    type=str,
+    default="{}",
+    help="Matplotlib rcParams to update, in dictionary format.",
+)
+parser.add_argument(
+    "--plt_rasterized",
+    action="store_true",
+    help="Save figures with rasterized=True.",
 )
 
 
@@ -213,6 +239,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     log.info(f"Arguments: {args}")
 
+    set_plt_style(
+        lovelyplot_style=ast.literal_eval(args.plt_style),
+        rcParams=ast.literal_eval(args.plt_rcparams),
+    )
+
+    plt_rasterized = args.plt_rasterized
+
     save_path = pathlib.Path(args.save_path)
     save_path.mkdir(parents=True, exist_ok=True)
 
@@ -236,7 +269,7 @@ if __name__ == "__main__":
     y_unit, y_convert = _decide_len_unit(np.max(params))
     fig, ax = plt.subplots()
     contour = ax.contourf(
-        rates, params * y_convert, sf_vals, levels=levels, cmap="viridis"
+        rates, params * y_convert, sf_vals, levels=levels, cmap="vanimo_r"
     )
     fig.colorbar(
         contour,
@@ -245,6 +278,7 @@ if __name__ == "__main__":
 
     ax.set_xlabel("Contamination Rate" + " (per day)")
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
+    ax.set_rasterized(plt_rasterized)
 
     name = (
         f"contour_{args.ctmn_population}_{args.ctmn_scenario}"
@@ -252,4 +286,4 @@ if __name__ == "__main__":
         + f"_{args.x_lim}_{args.y_lim}"
         + ".pdf"
     )
-    fig.savefig(save_path / name, bbox_inches="tight")
+    fig.savefig(save_path / name)

@@ -1,3 +1,4 @@
+import ast
 import logging
 from typing import Unpack, Literal
 import argparse
@@ -7,7 +8,15 @@ import lovelyplots  # type: ignore[import]
 import numpy as np
 import contamprob  # type: ignore[import]
 
-plt.style.use(["paper", "colors5", "use_tex"])
+
+def set_plt_style(
+    lovelyplot_style: list[str] = ["paper", "colors5", "use_tex"], rcParams: dict = {}
+):
+    """Set the plotting style for matplotlib."""
+    plt.style.use(lovelyplot_style)
+    plt.rcParams.update(rcParams)
+
+
 del lovelyplots
 
 
@@ -79,6 +88,23 @@ parser.add_argument(
     type=str,
     default="figures",
     help="Path to save the figures.",
+)
+parser.add_argument(
+    "--plt_style",
+    type=str,
+    default="['paper', 'colors5', 'use_tex']",
+    help="Lovelyplot style to use.",
+)
+parser.add_argument(
+    "--plt_rcparams",
+    type=str,
+    default="{}",
+    help="Matplotlib rcParams to update, in dictionary format.",
+)
+parser.add_argument(
+    "--plt_rasterized",
+    action="store_true",
+    help="Save figures with rasterized=True.",
 )
 
 
@@ -269,6 +295,7 @@ def compare(
     ax1.set_xlabel(f"Contamination time ({unit})")
     ax1.set_ylabel("Probability density function")
     ax1.legend(loc="upper right")
+    ax1.set_rasterized(plt_rasterized)
 
     fig2, ax2 = plt.subplots()
     try:
@@ -298,6 +325,7 @@ def compare(
         ax2.set_xlabel(f"Contamination interval length ({unit})")
         ax2.set_ylabel("Probability density function")
         ax2.legend()
+        ax2.set_rasterized(plt_rasterized)
         log.info(
             f"sample number of ctmn intervals: {np.mean(number_of_ctmn_intervals)}"
         )
@@ -410,6 +438,7 @@ def self_ctmn_compare(
     ax1.legend()
     ax1.set_xlabel("Number of self-contaminated signals")
     ax1.set_ylabel("Probability mass function")
+    ax1.set_rasterized(plt_rasterized)
     return fig1
 
 
@@ -421,6 +450,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     log.info(f"Arguments: {args}")
+
+    set_plt_style(
+        lovelyplot_style=ast.literal_eval(args.plt_style),
+        rcParams=ast.literal_eval(args.plt_rcparams),
+    )
+
+    plt_rasterized = args.plt_rasterized
 
     save_path = pathlib.Path(args.save_path)
     save_path.mkdir(parents=True, exist_ok=True)
