@@ -437,7 +437,7 @@ def self_ctmn_compare(
 
     ax1.legend()
     ax1.set_xlabel("Number of self-contaminated signals")
-    ax1.set_ylabel("Probability mass function")
+    ax1.set_ylabel("PMF")
     ax1.set_rasterized(plt_rasterized)
     return fig1
 
