@@ -276,7 +276,7 @@ if __name__ == "__main__":
         label=rf"Probability of $T_\text{{ctmn}} \geqslant {args.critical_value} \unit{{\day}}$",
     )
 
-    ax.set_xlabel("Contamination Rate" + r" (\unit{\per\day})")
+    ax.set_xlabel(r"$\lambda$" + r" (\unit{\per\day})")
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
     ax.set_rasterized(plt_rasterized)
 
