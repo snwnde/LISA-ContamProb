@@ -309,13 +309,28 @@ if __name__ == "__main__":
     contour = ax.contourf(
         rates, params * y_convert, sf_vals, levels=levels, cmap="berlin"
     )
+    ax.set_rasterized(plt_rasterized)
+    contour.set_rasterized(plt_rasterized)
+
+    def format_colorbar(value, _):
+        # No success for aligning the decimal points
+        pctg = value * 100
+        integer_part = int(pctg)
+        decimal_part = f"{pctg - integer_part:.2f}".lstrip("0")
+        return f"{integer_part:>2}{decimal_part}"
+
+        # _fmt = f"{value * 100:.2f}"
+        # if _fmt[0] == "0":
+        #     return "\phantom{0}" + _fmt
+        # return _fmt
+
     fig.colorbar(
         contour,
-        label=rf"Probability of $T_\text{{ctmn}} \geqslant \SI{{{args.critical_value}}}{{\day}}$",
+        label=rf"Probability of $T_\text{{ctmn}} \geqslant \SI{{{args.critical_value}}}{{\day}}$ (\unit{{\percent}})",
+        format=plt.FuncFormatter(format_colorbar),
     )
 
     ax.set_xlabel(r"$\lambda$" + r" (\unit{\per\day})")
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
-    ax.set_rasterized(plt_rasterized)
 
     fig.savefig(save_path / f"{name}.pdf")
