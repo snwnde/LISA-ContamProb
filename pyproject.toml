@@ -9,7 +9,7 @@ packages = [{ include = "contamprob", from = "src" }]
 [tool.poetry.dependencies]
 python = "^3.11"
 juliacall = "^0.9"
-numpy = "^1.25"
+numpy = ">1.25"
 scipy = "^1.14"
 joblib = "^1.4"
 
