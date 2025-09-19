@@ -103,6 +103,17 @@ parser.add_argument(
     action="store_true",
     help="Save figures with rasterized=True.",
 )
+parser.add_argument(
+    "--save_data",
+    action="store_true",
+    help="Save the data used to make the figures.",
+)
+parser.add_argument(
+    "--from_file",
+    type=str,
+    default="",
+    help="Path to a .npz file containing the data to plot.",
+)
 
 
 def _get_scenario(
@@ -258,11 +269,38 @@ if __name__ == "__main__":
     )
     vec_sf_eval = meshgrid_vectorize(sf_eval)
 
+    name = (
+        f"contour_{args.ctmn_population}_{args.ctmn_scenario}"
+        + f"_{args.critical_value}"
+        + f"_{args.x_lim}_{args.y_lim}"
+    )
+
     rates = np.linspace(0.1, args.x_lim, args.x_length)
     params = (
         np.linspace(100, args.y_lim, args.y_length) / 86400
     )  # convert seconds to days
-    sf_vals = vec_sf_eval(rates, params)
+
+    if not args.from_file:
+        log.info("Calculating contour data...")
+        sf_vals = vec_sf_eval(rates, params)
+    else:
+        log.info(f"Loading contour data from {args.from_file}...")
+        data = np.load(args.from_file)
+        rates = data["rates"]
+        params = data["params"]
+        observation_time = data["observation_time"].item()
+        critical_value = data["critical_value"].item()
+        sf_vals = data["sf_vals"]
+
+    if args.save_data:
+        np.savez(
+            save_path / f"{name}.npz",
+            rates=rates,
+            params=params,
+            sf_vals=sf_vals,
+            observation_time=args.observation_time,
+            critical_value=args.critical_value,
+        )
 
     levels = np.linspace(np.min(sf_vals), np.max(sf_vals), 100)
 
@@ -280,10 +318,4 @@ if __name__ == "__main__":
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
     ax.set_rasterized(plt_rasterized)
 
-    name = (
-        f"contour_{args.ctmn_population}_{args.ctmn_scenario}"
-        + f"_{args.critical_value}"
-        + f"_{args.x_lim}_{args.y_lim}"
-        + ".pdf"
-    )
-    fig.savefig(save_path / name)
+    fig.savefig(save_path / f"{name}.pdf")
