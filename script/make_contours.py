@@ -273,7 +273,7 @@ if __name__ == "__main__":
     )
     fig.colorbar(
         contour,
-        label=rf"Probability of $T_\mathrm{{ctmn}} \geqslant {args.critical_value} \unit{{\day}}$",
+        label=rf"Probability of $T_\text{{ctmn}} \geqslant {args.critical_value} \unit{{\day}}$",
     )
 
     ax.set_xlabel("Contamination Rate" + r" (\unit{\per\day})")
