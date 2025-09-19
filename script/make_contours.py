@@ -154,16 +154,16 @@ def _decide_len_unit(length: float):
     hour = 3600
     minute = 60
     if length > day / day:
-        unit = "days"
+        unit = r"\unit{\day}"
         convert = day / day
     elif length > hour / day:
-        unit = "hours"
+        unit = r"\unit{\hour}"
         convert = day / hour
     elif length > minute / day:
-        unit = "minutes"
+        unit = r"\unit{\minute}"
         convert = day / minute
     else:
-        unit = "seconds"
+        unit = r"\unit{\second}"
         convert = day
     return unit, convert
 
@@ -269,14 +269,14 @@ if __name__ == "__main__":
     y_unit, y_convert = _decide_len_unit(np.max(params))
     fig, ax = plt.subplots()
     contour = ax.contourf(
-        rates, params * y_convert, sf_vals, levels=levels, cmap="vanimo_r"
+        rates, params * y_convert, sf_vals, levels=levels, cmap="berlin"
     )
     fig.colorbar(
         contour,
         label=rf"Probability of contamination time $\geqslant$ {args.critical_value} days",
     )
 
-    ax.set_xlabel("Contamination Rate" + " (per day)")
+    ax.set_xlabel("Contamination Rate" + r" \unit{\per\day}")
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
     ax.set_rasterized(plt_rasterized)
 
