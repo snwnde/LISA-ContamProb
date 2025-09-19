@@ -273,10 +273,10 @@ if __name__ == "__main__":
     )
     fig.colorbar(
         contour,
-        label=rf"Probability of contamination time $\geqslant$ {args.critical_value} days",
+        label=rf"Probability of $T_\mathrm{{ctmn}} \geqslant {args.critical_value} \unit{{\day}}$",
     )
 
-    ax.set_xlabel("Contamination Rate" + r" \unit{\per\day}")
+    ax.set_xlabel("Contamination Rate" + r" (\unit{\per\day})")
     ax.set_ylabel(_get_y_label(args.ctmn_population) + f" ({y_unit})")
     ax.set_rasterized(plt_rasterized)
 
