@@ -254,10 +254,10 @@ def compare(
         for stats in ctmn_int_categories:
             ctmn_stats |= stats
 
-    sample_results = contamprob.approximation.PDFResults(
-        np.mean(ctmn_interval_lengths),
-        np.var(ctmn_interval_lengths),
-    )
+        sample_results = contamprob.approximation.PDFResults(
+            np.mean(ctmn_interval_lengths),
+            np.var(ctmn_interval_lengths),
+        )
 
     unit, convert = _decide_len_unit(np.max(ctmn_times))
     fig1, ax1 = plt.subplots()
