@@ -63,7 +63,7 @@ parser.add_argument(
 parser.add_argument(
     "--x_lim",
     type=float,
-    default=4,
+    default=4.0,
 )
 parser.add_argument(
     "--y_lim",
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     )
     fig.colorbar(
         contour,
-        label=rf"Probability of $T_\text{{ctmn}} \geqslant {args.critical_value} \unit{{\day}}$",
+        label=rf"Probability of $T_\text{{ctmn}} \geqslant \SI{{{args.critical_value}}}{{\day}}$",
     )
 
     ax.set_xlabel(r"$\lambda$" + r" (\unit{\per\day})")
