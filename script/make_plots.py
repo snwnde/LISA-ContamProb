@@ -113,16 +113,16 @@ def _decide_len_unit(length: float):
     hour = 3600
     minute = 60
     if length > day / day:
-        unit = "days"
+        unit = r"\unit{\day}"
         convert = day / day
     elif length > hour / day:
-        unit = "hours"
+        unit = r"\unit{\hour}"
         convert = day / hour
     elif length > minute / day:
-        unit = "minutes"
+        unit = r"\unit{\minute}"
         convert = day / minute
     else:
-        unit = "seconds"
+        unit = r"\unit{\second}"
         convert = day
     return unit, convert
 
@@ -292,8 +292,8 @@ def compare(
             linestyle="--",
         )
 
-    ax1.set_xlabel(f"Contamination time ({unit})")
-    ax1.set_ylabel("Probability density function")
+    ax1.set_xlabel(f"Dead time ({unit})")
+    ax1.set_ylabel("PDF")
     ax1.legend(loc="upper right")
     ax1.set_rasterized(plt_rasterized)
 
@@ -323,7 +323,7 @@ def compare(
             pass
 
         ax2.set_xlabel(f"Contamination interval length ({unit})")
-        ax2.set_ylabel("Probability density function")
+        ax2.set_ylabel("PDF")
         ax2.legend()
         ax2.set_rasterized(plt_rasterized)
         log.info(
