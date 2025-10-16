@@ -324,9 +324,15 @@ if __name__ == "__main__":
         #     return "\phantom{0}" + _fmt
         # return _fmt
 
+    def format_critical(value):
+        if value == int(value):
+            return f"{int(value)}"
+        else:
+            return f"{value:.1f}"
+
     fig.colorbar(
         contour,
-        label=rf"Probability of $T_\text{{ctmn}} \geqslant \SI{{{args.critical_value}}}{{\day}}$ (\unit{{\percent}})",
+        label=rf"Probability of $T_\text{{ctmn}} \geqslant \SI{{{format_critical(args.critical_value)}}}{{\day}}$ (\unit{{\percent}})",
         format=plt.FuncFormatter(format_colorbar),
     )
 
