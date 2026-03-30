@@ -1,30 +1,43 @@
-[tool.poetry]
+[project]
 name = "contamprob"
-version = "0.0.0"                                                # Just a placeholder
+dynamic = ["version"]
 description = "Probability of signal contamination in LISA data"
-authors = ["Sen-wen Deng <deng@apc.in2p3.fr>"]
+authors = [
+    { name = "Senwen Deng", email = "senwen.deng@l2it.in2p3.fr" },
+]
 readme = "README.md"
-packages = [{ include = "contamprob", from = "src" }]
+requires-python = ">=3.11"
+dependencies = [
+	"juliacall",
+	"numpy",
+	"scipy",
+	"joblib",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-juliacall = "^0.9"
-numpy = ">1.25"
-scipy = "^1.14"
-joblib = "^1.4"
 
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.9.0"
-ipykernel = "^6.29.5"
-ruff = "^0.9.6"
-matplotlib = "^3.9.0"
-line_profiler = "^4.1.1"
+[dependency-groups]
+dev = [
+	"mypy",
+	"ipykernel",
+	"ruff",
+	"matplotlib",
+	"line_profiler",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/contamprob"]
+
+[tool.uv-dynamic-versioning]
+enable = true
+style = "semver"
+vcs = "git"
 
 [build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
-
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-style = "pep440"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
